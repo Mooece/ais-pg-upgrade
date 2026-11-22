@@ -168,7 +168,7 @@ def build(args: argparse.Namespace) -> dict:
         target.write_bytes(data)
     manifest = {
         "schema_version": 1,
-        "release_id": RELEASE_ID,
+        "release_id": args.release_id,
         "upstream": {"url": UPSTREAM_URL, "commit": base},
         "entries": sorted(entries, key=lambda entry: entry["path"]),
     }
@@ -207,6 +207,7 @@ def main() -> None:
     parser.add_argument("--base", required=True)
     parser.add_argument("--custom-ref", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument("--release-id", default=RELEASE_ID)
     parser.add_argument("--report", help="External verification report path")
     parser.add_argument(
         "--previous-manifest",

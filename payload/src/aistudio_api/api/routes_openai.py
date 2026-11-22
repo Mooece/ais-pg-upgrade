@@ -1169,16 +1169,29 @@ async def _prepared_openai_events(
 ) -> AsyncGenerator[str, None]:
     try:
         log_request_event("openai_stream_preparing")
+        if base_model(request.model) != request.model:
+            # Full-reply prose is buffered anyway. Use the same generation path
+            # as nonstream clients so an upstream stream cannot end it early.
+            response = await _complete_openai_response(
+                request, gemini_request, client, cache_owner=cache_owner
+            )
+            completion = _as_dict(json.loads(bytes(response.body)))
+            if response.status_code != 200:
+                yield _sse(completion)
+                yield "data: [DONE]\n\n"
+                return
+            async for chunk in replay_chunks(
+                completion,
+                include_usage=(request.stream_options or {}).get("include_usage")
+                is True,
+            ):
+                yield chunk
+            return
         result = await handle_gemini_generate_content(
-            base_model(request.model),
+            request.model,
             gemini_request,
             client,
             stream=True,
-            **(
-                {"require_finish_reason": True}
-                if base_model(request.model) != request.model
-                else {}
-            ),
         )
         if not isinstance(result, StreamingResponse):
             raise HTTPException(

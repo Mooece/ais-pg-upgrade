@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release_id": "20261122-patch-only-443fa3f9",
+  "release_id": "20261122-full-reply-stream-d9e11378",
   "upstream": {
     "url": "https://github.com/DeconstructedCube/aistudio-api",
     "commit": "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
@@ -40,7 +40,10 @@
       "path": "src/aistudio_api/api/reply_cache_response.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "383f6fd9f35a6ffc9309fe83d2ffa81dc8976572950a1512af987f6eee66db34"
+      "payload_sha256": "62967fe367ed2226e49586ac0331541cc5a99c52b856998f8852503486283547",
+      "accepted_sha256": [
+        "383f6fd9f35a6ffc9309fe83d2ffa81dc8976572950a1512af987f6eee66db34"
+      ]
     },
     {
       "path": "src/aistudio_api/api/reply_cache_tasks.py",
@@ -52,7 +55,10 @@
       "path": "src/aistudio_api/api/routes_openai.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "42f6da69ad47b34a0ef2b11a91dff9b79c35429947249e636a19d7c29e64bc38"
+      "payload_sha256": "946099f458a0dd4bfc315ba3821ac71cf62bf7e90cb5f9c339b89bbc93bcd7c6",
+      "accepted_sha256": [
+        "42f6da69ad47b34a0ef2b11a91dff9b79c35429947249e636a19d7c29e64bc38"
+      ]
     },
     {
       "path": "src/aistudio_api/api/routes_system.py",
@@ -286,7 +292,10 @@
       "path": "tests/unit/test_anti_truncation.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "d6da994aa42af3d001490ca68cbe26fc2c24ff87009f5a8fe739709f40b52018"
+      "payload_sha256": "e172b6ac178fbe523ddd916db811bd0c022be071e6a153e7c3eca3981b01afdd",
+      "accepted_sha256": [
+        "d6da994aa42af3d001490ca68cbe26fc2c24ff87009f5a8fe739709f40b52018"
+      ]
     },
     {
       "path": "tests/unit/test_model_defaults.py",

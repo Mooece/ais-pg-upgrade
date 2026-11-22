@@ -58,6 +58,63 @@ def full_reply(*, reason="STOP", args=None, name="aistudio_full_reply"):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stream_failure", ["short_reply", "missing_finish"])
+async def test_streaming_alias_returns_complete_generation_when_upstream_stream_cuts_off(
+    api, monkeypatch, stream_failure
+):
+    complete = "第一段\n完整的最后一段。"
+
+    async def handle(model, request, client, *, stream, **kwargs):
+        if not stream:
+            return full_reply(args={"content": complete})
+
+        async def cut_off():
+            payload = full_reply(args={"content": "第一段"})
+            if stream_failure == "missing_finish":
+                payload["candidates"][0].pop("finishReason")
+            yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+        return StreamingResponse(cut_off())
+
+    upstream = AsyncMock(side_effect=handle)
+    monkeypatch.setattr(routes, "handle_gemini_generate_content", upstream)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemini-4a[防截断]",
+                "messages": [{"role": "user", "content": "返回完整的两段文字"}],
+                "stream": True,
+                "max_tokens": 4096,
+                "stream_options": {"include_usage": True},
+            },
+        )
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+    assert (
+        "".join(
+            choice["delta"].get("content", "")
+            for event in events
+            for choice in event.get("choices", [])
+        )
+        == complete
+    )
+    assert events[-2]["choices"][0]["finish_reason"] == "stop"
+    assert events[-1]["usage"]["total_tokens"] == 10
+    assert response.text.count("data: [DONE]") == 1
+    assert all("error" not in event for event in events)
+    assert upstream.call_args.args[0] == "gemini-4a"
+    assert upstream.call_args.kwargs == {"stream": False, "require_finish_reason": True}
+    assert upstream.call_args.args[1].generationConfig.maxOutputTokens == 4096
+
+
+@pytest.mark.asyncio
 async def test_selected_alias_returns_complete_prose_and_preserves_system(
     api, monkeypatch
 ):
@@ -102,13 +159,11 @@ async def test_streaming_alias_waits_for_complete_envelope_and_returns_usage(
 ):
     async def upstream():
         payload = full_reply()
-        candidate = payload["candidates"][0]
-        reason = candidate.pop("finishReason")
-        event = "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+        event = json.dumps(payload, ensure_ascii=False)
         encoded = event.encode()
+        yield b"\n"
         for index in range(0, len(encoded), 5):
             yield encoded[index : index + 5]
-        yield "data: " + json.dumps({"candidates": [{"finishReason": reason}]}) + "\n\n"
 
     handle = AsyncMock(return_value=StreamingResponse(upstream()))
     monkeypatch.setattr(routes, "handle_gemini_generate_content", handle)
@@ -145,6 +200,7 @@ async def test_streaming_alias_waits_for_complete_envelope_and_returns_usage(
     assert events[-2]["choices"][0]["finish_reason"] == "stop"
     assert events[-1]["usage"]["total_tokens"] == 10
     assert handle.call_args.args[0] == "gemini-3.7-flash"
+    assert handle.call_args.kwargs == {"stream": False, "require_finish_reason": True}
 
 
 @pytest.mark.asyncio
@@ -293,11 +349,7 @@ async def test_unfinished_or_invalid_alias_never_returns_success_or_caches(
         candidate["content"]["parts"][1]["functionCall"]["args"] = {"content": 7}
 
     async def upstream():
-        event = (
-            ("data: " if stream else "")
-            + json.dumps(payload, ensure_ascii=False)
-            + "\n\n"
-        )
+        event = json.dumps(payload, ensure_ascii=False) + "\n\n"
         yield event[:-10] if failure == "truncated_json" else event
 
     monkeypatch.setattr(
@@ -305,7 +357,7 @@ async def test_unfinished_or_invalid_alias_never_returns_success_or_caches(
         "handle_gemini_generate_content",
         AsyncMock(
             return_value=StreamingResponse(upstream())
-            if stream or failure == "truncated_json"
+            if failure == "truncated_json"
             else payload
         ),
     )
@@ -340,8 +392,7 @@ async def test_real_gateway_preserves_completion_evidence_for_alias(
     class UpstreamSession:
         active_context = None
 
-        async def send_streaming_request(self, **kwargs):
-            yield "status", 200
+        def wire(self):
             part = [
                 None,
                 None,
@@ -357,12 +408,18 @@ async def test_real_gateway_preserves_completion_evidence_for_alias(
                 wire = wire[:-1]
             elif failure == "truncated_argument":
                 wire = wire[: wire.index("wire complete") + len("wire comp")]
-            yield "chunk", wire.encode()
+            return wire.encode()
+
+        async def send_request(self, **kwargs):
+            return 200, self.wire()
+
+        async def send_streaming_request(self, **kwargs):
+            yield "status", 200
+            yield "chunk", self.wire()
 
     gateway_client = AIStudioClient()
-    gateway_client._streaming_gateway = StreamingGateway(
-        session=cast(GatewaySession, UpstreamSession())
-    )
+    gateway_client._session = cast(GatewaySession, UpstreamSession())
+    gateway_client._streaming_gateway = StreamingGateway(session=gateway_client.session)
     gateway_client.prepare_request = AsyncMock(
         return_value=PreparedRequest(url="https://example.test", headers={}, body="[]")
     )
@@ -532,12 +589,7 @@ async def test_complete_alias_reply_can_be_replayed_as_plain_prose(
     await cache.configure(1)
     app.dependency_overrides[routes._reply_cache_owner] = lambda: "alias-owner"
 
-    async def upstream():
-        yield "data: " + json.dumps(full_reply(), ensure_ascii=False) + "\n\n"
-
-    handle = AsyncMock(
-        return_value=StreamingResponse(upstream()) if stream else full_reply()
-    )
+    handle = AsyncMock(return_value=full_reply())
     monkeypatch.setattr(routes, "handle_gemini_generate_content", handle)
     try:
         async with httpx.AsyncClient(
@@ -568,12 +620,19 @@ async def test_complete_alias_reply_can_be_replayed_as_plain_prose(
             "content": "完整回答\n第二段",
         }
         handle.assert_awaited_once()
+        assert handle.call_args.kwargs == {
+            "stream": False,
+            "require_finish_reason": True,
+        }
     finally:
         app.dependency_overrides.pop(routes._reply_cache_owner, None)
 
 
 @pytest.mark.asyncio
-async def test_alias_idle_keepalive_and_cancellation_close_upstream(monkeypatch):
+@pytest.mark.parametrize("complete", [False, True])
+async def test_alias_idle_keepalive_closes_upstream_on_finish_or_cancel(
+    monkeypatch, complete
+):
     from aistudio_api.api.schemas import OpenAIChatCompletionRequest
 
     blocked = asyncio.Event()
@@ -582,7 +641,7 @@ async def test_alias_idle_keepalive_and_cancellation_close_upstream(monkeypatch)
     async def upstream():
         try:
             await blocked.wait()
-            yield "unreachable"
+            yield json.dumps(full_reply(), ensure_ascii=False)
         finally:
             closed.set()
 
@@ -603,8 +662,39 @@ async def test_alias_idle_keepalive_and_cancellation_close_upstream(monkeypatch)
     assert isinstance(response, StreamingResponse)
     iterator = response.body_iterator
     assert isinstance(iterator, AsyncGenerator)
-    first = await anext(iterator)
-    assert isinstance(first, str) and '"role":"assistant"' in first
     assert await anext(iterator) == ": keepalive\n\n"
+    assert await anext(iterator) == ": keepalive\n\n"
+    if complete:
+        blocked.set()
+        chunks = [chunk async for chunk in iterator]
+        body = "".join(str(chunk) for chunk in chunks)
+        assert '"content":"完整回答\\n第二段"' in body
+        assert '"finish_reason":"stop"' in body
+        assert body.count("data: [DONE]") == 1
     await iterator.aclose()
     assert closed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_streaming_alias_preserves_buffered_upstream_error(api, monkeypatch):
+    async def upstream():
+        yield b"\n"
+        yield json.dumps({"error": {"code": 429, "message": "Try later"}})
+
+    handle = AsyncMock(return_value=StreamingResponse(upstream()))
+    monkeypatch.setattr(routes, "handle_gemini_generate_content", handle)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemini-4a[防截断]",
+                "messages": [{"role": "user", "content": "test"}],
+                "stream": True,
+            },
+        )
+    assert '"code":429' in response.text
+    assert "Try later" in response.text
+    assert '"finish_reason":"stop"' not in response.text
+    assert response.text.count("data: [DONE]") == 1

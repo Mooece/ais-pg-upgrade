@@ -159,6 +159,7 @@ async def replay_chunks(
         }
     )
     if include_usage:
+        raw_usage = completion.get("usage")
         yield _sse(
             {
                 "id": response_id,
@@ -166,7 +167,9 @@ async def replay_chunks(
                 "created": created,
                 "model": model,
                 "choices": [],
-                "usage": {
+                "usage": raw_usage
+                if isinstance(raw_usage, dict)
+                else {
                     "prompt_tokens": 0,
                     "completion_tokens": 0,
                     "total_tokens": 0,
