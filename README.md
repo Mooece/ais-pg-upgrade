@@ -54,7 +54,7 @@ git clone --single-branch --branch main https://github.com/Mooece/ais-pg-upgrade
 
 ### Windows 本地
 
-先在原服务窗口按 `Ctrl+C`。下面用 PowerShell，路径替换成实际安装位置：
+先在原服务窗口按 `Ctrl+C`，等待出现 `Application shutdown complete`。如果 CMD 询问是否终止批处理，选择 `Y`，再退出旧服务窗口。下面的升级命令在新的 PowerShell 窗口执行，路径替换成实际安装位置：
 
 ```powershell
 $project = 'D:\apps\aistudio-api'
@@ -71,7 +71,9 @@ Set-Location -LiteralPath $project
 .\start.bat
 ```
 
-也可执行 `Upgrade-Windows.cmd "D:\apps\aistudio-api"` 应用当前已拉取的补丁。保留原有启动参数，启动后检查原服务的 `/health` 与面板。
+也可执行 `Upgrade-Windows.cmd "D:\apps\aistudio-api"` 应用当前已拉取的补丁。此入口只应用文件，完成后仍需运行原项目的 `start.bat`。保留原有启动参数，启动后保持服务窗口打开，并检查原服务的 `/health` 与面板。
+
+升级顺序为：**完整停止旧实例 → 应用补丁 → 启动一个新实例 → 打开页面**。运行中的 Python 进程不会因磁盘代码更新而自动重新加载。如果启动时出现 `WinError 10048` 或 8080 端口被占用，先核对原来的服务窗口，避免同时启动两个实例；不要批量结束其他 Python 程序。
 
 ### VPS / FinalShell / systemd
 
