@@ -31,10 +31,15 @@ from aistudio_api.infrastructure.utils.logger import (
     setup_logging,
 )
 
+from .analytics import flush_analytics
+from .analytics_middleware import RequestAnalyticsMiddleware
 from .dependencies import require_api_key, require_web_auth
+from .reply_cache import router as reply_cache_router
+from .reply_cache_tasks import reply_cache_tasks
 from .routes_accounts import router as accounts_router
 from .routes_gemini import router as gemini_router
 from .routes_models import router as models_router
+from .routes_openai import router as openai_router
 from .routes_system import (
     protected_router as system_protected_router,
     public_router as system_public_router,
@@ -289,6 +294,7 @@ async def lifespan(_app: FastAPI):
 
     yield
     logger.info("正在关闭服务")
+    await reply_cache_tasks.shutdown()
     bg_tasks = [t for t in (tier_task, rotate_task) if t and not t.done()]
     for bg_task in bg_tasks:
         bg_task.cancel()
@@ -312,6 +318,7 @@ async def lifespan(_app: FastAPI):
         except Exception as e:
             logger.debug("关闭客户端异常: %s", e)
     await stop_signer_daemon()
+    await flush_analytics()
     runtime_state.client = None
     runtime_state.account_service = None
     runtime_state.rotator = None
@@ -326,10 +333,53 @@ app.include_router(
 app.include_router(accounts_router, dependencies=[Depends(require_web_auth)])
 app.include_router(gemini_router, dependencies=[Depends(require_api_key)])
 app.include_router(models_router, dependencies=[Depends(require_api_key)])
+app.include_router(openai_router, dependencies=[Depends(require_api_key)])
+app.include_router(reply_cache_router, dependencies=[Depends(require_web_auth)])
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+    if _request.url.path.startswith("/v1/"):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            message = str(detail.get("message") or detail.get("detail") or detail)
+            error_type = str(detail.get("type") or "")
+        else:
+            message = str(detail)
+            error_type = ""
+        if not error_type:
+            error_type = (
+                "authentication_error"
+                if exc.status_code == 401
+                else "permission_error"
+                if exc.status_code == 403
+                else "not_found_error"
+                if exc.status_code == 404
+                else "rate_limit_error"
+                if exc.status_code == 429
+                else "invalid_request_error"
+                if exc.status_code < 500
+                else "server_error"
+            )
+        error_code = (
+            "invalid_api_key"
+            if exc.status_code == 401
+            else "model_not_found"
+            if exc.status_code == 404 and "model" in message.lower()
+            else None
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "message": message,
+                    "type": error_type,
+                    "param": None,
+                    "code": error_code,
+                }
+            },
+            headers=getattr(exc, "headers", None),
+        )
     code, msg, status_str = classify_gemini_error_payload(exc)
     if code >= 500:
         logger.error(
@@ -369,6 +419,21 @@ async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONR
 async def validation_exception_handler(
     _request: Request, exc: RequestValidationError
 ) -> JSONResponse:
+    if _request.url.path.startswith("/v1/"):
+        logger.warning(
+            "OpenAI 请求参数校验失败: path=%s, error=%s", _request.url.path, exc
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "message": str(exc),
+                    "type": "invalid_request_error",
+                    "param": None,
+                    "code": None,
+                }
+            },
+        )
     code, msg, status_str = 400, str(exc), "INVALID_ARGUMENT"
     logger.warning("请求参数校验失败: path=%s, error=%s", _request.url.path, exc)
     return JSONResponse(
@@ -398,8 +463,9 @@ async def logging_and_dump_middleware(request, call_next):
     path = request.url.path
     log_path = _safe_log_path(path)
     is_static = path.startswith(("/static", "/assets")) or path in ("/favicon.ico",)
-    console_dump = is_dump_requests_enabled() and not is_static
-    file_dump = is_dump_to_file_enabled() and not is_static
+    private_cache = path.startswith("/api/reply-cache")
+    console_dump = is_dump_requests_enabled() and not is_static and not private_cache
+    file_dump = is_dump_to_file_enabled() and not is_static and not private_cache
     dump_enabled = console_dump or file_dump
 
     req_id = ""
@@ -469,6 +535,8 @@ async def logging_and_dump_middleware(request, call_next):
         raise exc
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
+    if response.headers.get("X-Aistudio-Reply-Cache") == "replay":
+        dump_enabled = False
     content_type = response.headers.get("content-type", "")
     is_event_stream = "text/event-stream" in content_type
     is_streaming_resp = (
@@ -636,9 +704,10 @@ async def spa_navigation_middleware(request: Request, call_next):
         and "text/html" in accept
         and "application/json" not in accept
     )
-    is_api = request.url.path.startswith(
+    is_api = request.url.path == "/v1" or request.url.path.startswith(
         (
             "/api",
+            "/v1/",
             "/v1beta",
             "/auth",
             "/assets",
@@ -686,6 +755,9 @@ async def root_index():
         )
         return response
     return JSONResponse({"message": "AI Studio API Web UI"})
+
+
+app.add_middleware(RequestAnalyticsMiddleware)
 
 
 def main():

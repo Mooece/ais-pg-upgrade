@@ -68,8 +68,21 @@ class StreamingGateway:
             raise RuntimeError("gateway session is required for streaming")
         request_body = request.body
         logger.debug("开始流式解析: model=%s, body_len=%d", model, len(request_body))
-        parser = IncrementalJSONStreamParser()
-        utf8_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        parser = IncrementalJSONStreamParser(
+            allow_repair=not request.require_finish_reason
+        )
+        utf8_decoder = codecs.getincrementaldecoder("utf-8")(
+            errors="strict" if request.require_finish_reason else "replace"
+        )
+
+        def decode_chunk(data: bytes, *, final: bool = False) -> str:
+            try:
+                return utf8_decoder.decode(data, final=final)
+            except UnicodeDecodeError as exc:
+                raise TransportError(
+                    "Full-reply stream contains invalid UTF-8"
+                ) from exc
+
         latest_usage: dict[str, object] | None = None
         latest_finish_reason: int | None = None
         latest_response_id: str | None = None
@@ -188,7 +201,7 @@ class StreamingGateway:
                 elif event_type == "chunk" and payload:
                     has_received_chunks = True
                     if isinstance(payload, bytes):
-                        text_payload = utf8_decoder.decode(payload, final=False)
+                        text_payload = decode_chunk(payload)
                     else:
                         text_payload = str(payload)
                     if not text_payload:
@@ -201,7 +214,7 @@ class StreamingGateway:
                         for event in emit_parsed_chunk(parsed_chunk):
                             emitted_any_chunk = True
                             yield event
-        trailing_text = utf8_decoder.decode(b"", final=True)
+        trailing_text = decode_chunk(b"", final=True)
         if trailing_text:
             if status_code != 200:
                 raw_parts.append(trailing_text)
@@ -257,6 +270,8 @@ class StreamingGateway:
                 raise TransportError("upstream returned HTML error page on HTTP 200")
         if latest_finish_reason is not None:
             yield ("finish_reason", latest_finish_reason)
+        elif request.require_finish_reason:
+            raise TransportError("Full-reply stream ended without a real finish reason")
         else:
             yield ("finish_reason", 1)
         yield ("usage", latest_usage)

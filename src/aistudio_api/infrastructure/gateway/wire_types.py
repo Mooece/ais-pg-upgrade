@@ -294,8 +294,12 @@ class AistudioPart:
         if self.thought:
             wire[PartIndex.THOUGHT_ALT_FLAG] = 1
         if self.thought_signature:
-            wire[PartIndex.THOUGHT_SIGNATURE] = _normalize_standard_base64(
-                self.thought_signature, pad_standard=True
+            wire[PartIndex.THOUGHT_SIGNATURE] = (
+                base64.b64encode(self.thought_signature.encode("utf-8")).decode("ascii")
+                if self.thought_signature == "skip_thought_signature_validator"
+                else _normalize_standard_base64(
+                    self.thought_signature, pad_standard=True
+                )
             )
         if self.file_id:
             wire[PartIndex.FILE_DATA] = [self.file_id]

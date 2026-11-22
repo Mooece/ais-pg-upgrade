@@ -6,12 +6,18 @@ using connection pooling and chunk streaming.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import inspect
+import math
+import os
 import socket
 import struct
 import time
 from collections.abc import AsyncGenerator
+from typing import TypedDict
 
+import anyio
 import httpcore
 import httpx
 
@@ -29,6 +35,7 @@ from aistudio_api.infrastructure.gateway.headers import (
     merge_header_case_insensitive,
 )
 from aistudio_api.infrastructure.utils.logger import get_logger
+from aistudio_api.infrastructure.utils.request_diagnostics import log_request_event
 
 logger = get_logger("transport")
 
@@ -43,10 +50,49 @@ _DROPPED_HEADER_NAMES = frozenset(
     }
 )
 
-# 上游长思考/长工具调用无数据时，每 25s 发送一次端到端 HTTP/2 PING 帧（穿透代理与 NAT），
-# 防止中间代理或 Google GFE 在 60s~120s 静默期强制断连导致 502。
-H2_PING_INTERVAL_SECONDS = 25.0
+# PING 维持 HTTP/2 空闲连接；不能延长 Google 服务端的固定请求寿命。
 _h2_ping_installed = False
+_h2_pings_sent = 0
+_h2_acks_received = 0
+_h2_last_error: str | None = None
+
+
+def _configured_ping_interval() -> float:
+    global _h2_last_error
+    interval = os.environ.get("AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS", "25")
+    try:
+        parsed = float(interval)
+        if math.isfinite(parsed) and 5.0 <= parsed <= 240.0:
+            return parsed
+    except ValueError:
+        pass
+    _h2_last_error = "Invalid HTTP/2 PING interval; using 25 seconds (range: 5..240)"
+    logger.warning("%s", _h2_last_error)
+    return 25.0
+
+
+H2_PING_INTERVAL_SECONDS = _configured_ping_interval()
+
+
+class UpstreamKeepaliveStatus(TypedDict):
+    enabled: bool
+    installed: bool
+    interval_seconds: float
+    pings_sent: int
+    acks_received: int
+    last_error: str | None
+
+
+def get_upstream_keepalive_status() -> UpstreamKeepaliveStatus:
+    """Process-local protocol counters, without request or credential details."""
+    return {
+        "enabled": True,
+        "installed": _h2_ping_installed,
+        "interval_seconds": H2_PING_INTERVAL_SECONDS,
+        "pings_sent": _h2_pings_sent,
+        "acks_received": _h2_acks_received,
+        "last_error": _h2_last_error,
+    }
 
 
 def _build_keepalive_socket_options() -> list[tuple[int, int, int]]:
@@ -69,29 +115,76 @@ def _build_keepalive_socket_options() -> list[tuple[int, int, int]]:
 def _install_http2_ping_keepalive() -> None:
     """Install RFC 9113 HTTP/2 PING keepalive into httpcore.AsyncHTTP2Connection.
 
-    httpcore uses hyper-h2 but never emits HTTP/2 PING frames during long silent
-    reads (such as deep thinking or large buffered tool calls >120s), causing
-    proxies, NATs, and Google GFE to drop idle tunnels with RemoteProtocolError.
-    Slicing network reads at H2_PING_INTERVAL_SECONDS and sending a PING frame
-    through the TLS stream under `_write_lock` resets application-layer idle
-    timers end-to-end without background tasks or thread-safety hazards.
+    Slice idle reads to send legal PING frames under httpcore's write lock.
+    A separate per-stream deadline covers all control frames and lock waits,
+    so PING ACKs cannot silently disable the configured business read timeout.
     """
-    global _h2_ping_installed
+    global _h2_last_error, _h2_ping_installed
     if _h2_ping_installed:
         return
     try:
+        import h2.config
+        import h2.connection
+        import h2.events
         from httpcore._async import http2 as hc_http2
-    except Exception:
+
+        conn_cls = hc_http2.AsyncHTTP2Connection
+        if getattr(conn_cls, "_aistudio_h2_ping_installed", False):
+            _h2_ping_installed = True
+            return
+        # Private hooks must retain their contract. Fail open with the original
+        # httpcore implementation if a dependency upgrade changes that contract.
+        for method, parameters in (
+            (conn_cls._read_incoming_data, ["self", "request"]),
+            (conn_cls._receive_stream_event, ["self", "request", "stream_id"]),
+        ):
+            if list(inspect.signature(method).parameters) != parameters:
+                raise RuntimeError("Unsupported httpcore HTTP/2 hook signature")
+        # Exercise PING encoding/ACK decoding before altering any method.
+        client = h2.connection.H2Connection()
+        server = h2.connection.H2Connection(
+            config=h2.config.H2Configuration(client_side=False)
+        )
+        client.initiate_connection()
+        server.initiate_connection()
+        server.receive_data(client.data_to_send())
+        client.receive_data(server.data_to_send())
+        client.ping(b"aistudio")
+        server.receive_data(client.data_to_send())
+        if not any(
+            isinstance(event, h2.events.PingAckReceived)
+            for event in client.receive_data(server.data_to_send())
+        ):
+            raise RuntimeError("HTTP/2 PING self-test failed")
+    except Exception as exc:
+        _h2_last_error = f"HTTP/2 keepalive unavailable ({type(exc).__name__})"
+        logger.warning("%s; using original httpcore transport", _h2_last_error)
         return
 
-    conn_cls = getattr(hc_http2, "AsyncHTTP2Connection", None)
-    if conn_cls is None or getattr(conn_cls, "_aistudio_h2_ping_installed", False):
-        _h2_ping_installed = True
-        return
+    original_receive_stream_event = conn_cls._receive_stream_event
+
+    async def _receive_stream_event_with_deadline(
+        self: hc_http2.AsyncHTTP2Connection,
+        request: httpcore.Request,
+        stream_id: int,
+    ) -> h2.events.ResponseReceived | h2.events.DataReceived | h2.events.StreamEnded:
+        global _h2_last_error
+        read_timeout = request.extensions.get("timeout", {}).get("read")
+        try:
+            # Cancellation releases _read_lock without setting _read_exception.
+            # A timed-out stream must not poison another multiplexed request.
+            with anyio.fail_after(read_timeout):
+                return await original_receive_stream_event(self, request, stream_id)
+        except TimeoutError as exc:
+            _h2_last_error = "HTTP/2 response data read timeout"
+            raise httpcore.ReadTimeout(
+                "Timed out waiting for HTTP/2 response data"
+            ) from exc
 
     async def _read_incoming_data_with_ping(
         self: object, request: httpcore.Request
     ) -> list[object]:
+        global _h2_acks_received, _h2_last_error, _h2_pings_sent
         timeouts = request.extensions.get("timeout", {})
         total_timeout = timeouts.get("read", None)
         write_timeout = timeouts.get("write", 30.0)
@@ -142,20 +235,27 @@ def _install_http2_ping_keepalive() -> None:
                             await self._network_stream.write(  # type: ignore[attr-defined]
                                 outgoing, write_timeout
                             )
+                            _h2_pings_sent += 1
                     continue
 
                 if data == b"":
                     raise httpcore.RemoteProtocolError("Server disconnected")
                 break
         except Exception as exc:
+            _h2_last_error = f"HTTP/2 read failed ({type(exc).__name__})"
             self._read_exception = exc  # type: ignore[attr-defined]
             self._connection_error = True  # type: ignore[attr-defined]
             raise exc
 
-        return list(self._h2_state.receive_data(data))  # type: ignore[attr-defined]
+        events = list(self._h2_state.receive_data(data))  # type: ignore[attr-defined]
+        _h2_acks_received += sum(
+            isinstance(event, h2.events.PingAckReceived) for event in events
+        )
+        return events
 
     conn_cls._read_incoming_data = _read_incoming_data_with_ping  # type: ignore[method-assign]
-    conn_cls._aistudio_h2_ping_installed = True
+    conn_cls._receive_stream_event = _receive_stream_event_with_deadline  # type: ignore[method-assign]
+    conn_cls._aistudio_h2_ping_installed = True  # type: ignore[attr-defined]
     _h2_ping_installed = True
 
 
@@ -452,6 +552,12 @@ class HTTPStreamTransport:
         expected_cookie_id: str | None = None,
     ) -> AsyncGenerator[tuple[str, object], None]:
         """Stream HTTP response chunks directly."""
+        started = time.perf_counter()
+        received_bytes = 0
+        received_chunks = 0
+        last_byte_at: float | None = None
+        outcome = "closed"
+        log_request_event("upstream_start", read_timeout_s=self.timeout)
         # 必须在网络等待前捕获 Cookie 与代际，不能用响应到达后的新凭据回填。
         request_cookies = (
             cookies if cookies is not None else (_get_auth_cookies(auth_file) or {})
@@ -482,6 +588,11 @@ class HTTPStreamTransport:
                 content=body.encode("utf-8", errors="replace"),
             )
             resp = await client.send(req, stream=True)
+            log_request_event(
+                "upstream_headers",
+                status_code=resp.status_code,
+                elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+            )
             _sync_response_cookies(
                 resp,
                 auth_file=auth_file,
@@ -492,14 +603,39 @@ class HTTPStreamTransport:
 
             if resp.status_code != 200:
                 err_body = await resp.aread()
+                received_bytes += len(err_body)
+                last_byte_at = time.perf_counter()
+                outcome = "http_error"
                 yield ("chunk", err_body)
                 return
 
             async for chunk in resp.aiter_bytes():
                 if chunk:
+                    last_byte_at = time.perf_counter()
+                    received_bytes += len(chunk)
+                    received_chunks += 1
+                    if received_chunks == 1:
+                        log_request_event(
+                            "upstream_first_byte",
+                            elapsed_ms=round((last_byte_at - started) * 1000, 2),
+                        )
                     yield ("chunk", chunk)
+            outcome = "complete"
 
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            log_request_event("upstream_cancelled")
+            raise
+        except GeneratorExit:
+            outcome = "iterator_closed"
+            raise
         except Exception as exc:
+            outcome = "error"
+            log_request_event(
+                "upstream_error",
+                exception_type=type(exc).__name__,
+                errno=getattr(exc, "errno", None),
+            )
             err_detail = (
                 f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
             )
@@ -521,7 +657,23 @@ class HTTPStreamTransport:
             yield ("error", err_detail)
         finally:
             try:
-                if resp is not None:
-                    await resp.aclose()
+                with anyio.CancelScope(shield=True):
+                    try:
+                        if resp is not None:
+                            await resp.aclose()
+                    finally:
+                        await self._release_inflight(client)
             finally:
-                await self._release_inflight(client)
+                ended = time.perf_counter()
+                log_request_event(
+                    "upstream_end",
+                    reason=outcome,
+                    elapsed_ms=round((ended - started) * 1000, 2),
+                    received_bytes=received_bytes,
+                    received_chunks=received_chunks,
+                    last_byte_age_ms=(
+                        round((ended - last_byte_at) * 1000, 2)
+                        if last_byte_at is not None
+                        else None
+                    ),
+                )

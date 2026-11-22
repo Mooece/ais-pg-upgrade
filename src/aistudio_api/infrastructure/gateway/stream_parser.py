@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Generator
 
+from aistudio_api.domain.errors import TransportError
 from aistudio_api.infrastructure.gateway.wire_parser import (
     WIRE_RESPONSE_ID_INDEX,
     parse_chunk_usage,
@@ -157,7 +158,8 @@ class IncrementalJSONStreamParser:
     因此本状态机在深度到达 3 时标记分块起始，退回深度 2 时切出完整 chunk 并反序列化。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, allow_repair: bool = True) -> None:
+        self._allow_repair = allow_repair
         self.buffer: str = ""
         self.depth: int = 0
         self.in_string: bool = False
@@ -166,11 +168,12 @@ class IncrementalJSONStreamParser:
         self.preamble_skipped: bool = False
         self._pos: int = 0
 
-    @staticmethod
-    def _parse_chunk(chunk_str: str) -> object | None:
+    def _parse_chunk(self, chunk_str: str) -> object | None:
         try:
             return json.loads(chunk_str)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            if not self._allow_repair:
+                raise TransportError("Full-reply stream contains invalid JSON") from exc
             return _repair_truncated_json(chunk_str)
 
     def feed(self, data: str) -> Generator[list[object], None, None]:
@@ -231,6 +234,15 @@ class IncrementalJSONStreamParser:
 
     def finish(self) -> Generator[list[object], None, None]:
         """流结束：把缓冲区里最后一个不完整的分块修复后交出去，防止丢字/丢finish/丢usage。"""
+        if not self._allow_repair:
+            if (
+                self.chunk_start is not None
+                or self.depth != 0
+                or self.in_string
+                or self.escape
+            ):
+                raise TransportError("Full-reply stream contains incomplete JSON")
+            return
         fragment = ""
         if self.chunk_start is not None:
             fragment = self.buffer[self.chunk_start :]

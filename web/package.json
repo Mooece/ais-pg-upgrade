@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun --bun vite",
-    "build": "bun --bun x vue-tsc -b && bun --bun vite build",
+    "build": "bun --bun x vue-tsc -b && bun --bun vite build && bun run verify-build",
+    "verify-build": "bun ./scripts/verify-build.mjs",
     "type-check": "bun --bun x vue-tsc -b",
     "lint": "bun --bun x eslint src --max-warnings 0",
     "preview": "bun --bun vite preview"

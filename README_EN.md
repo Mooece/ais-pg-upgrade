@@ -1,5 +1,7 @@
 # aistudio-api
 
+This repository, [Mooece/ais-pg-upgrade](https://github.com/Mooece/ais-pg-upgrade), publishes the complete customized source with OpenAI compatibility, reply caching, analytics, upstream keepalive and anti-truncation. VPS, Termux and Windows deployments track `main`. Existing installations should follow the [Git upgrade guide](GIT_UPGRADE.zh-CN.md) before pulling updates. The original project is [DeconstructedCube/aistudio-api](https://github.com/DeconstructedCube/aistudio-api); its source history and MIT license are preserved.
+
 <p align="center">
   <a href="https://github.com/DeconstructedCube/aistudio-api"><img src="https://img.shields.io/badge/API-Gemini%20v1beta-4285F4?style=flat-square&logo=google" alt="Gemini API"></a>
   <a href="https://hub.docker.com/r/bedrockblock/aistudio-api"><img src="https://img.shields.io/badge/Docker-bedrockblock%2Faistudio--api-2496ED?style=flat-square&logo=docker" alt="Docker Hub"></a>
@@ -48,6 +50,7 @@
 | Feature | Description |
 |---|---|
 | **Gemini API Compatibility** | Supports `/v1beta/...` endpoints including Thinking, multimodal inputs, function calling, image generation, TTS audio synthesis, and video generation |
+| **OpenAI Chat Completions Compatibility** | Provides `/v1/chat/completions` and `/v1/models` with text chat, SSE streaming, function calling, JSON mode, and base64 data URL image input |
 | **Dynamic Model Discovery** | Automatically synchronizes and discovers available models from upstream Google AI Studio |
 | **Multi-Account Rotation** | Manages multiple accounts with automatic failover, per-model 429 cooldown isolation, Pacific midnight reset, paid-tier preemption, and 7-minute periodic Cookie rotation (`RotateCookies`) |
 | **Runtime State Persistence** | Model usage statistics (`stats.json`) and account 429 cooldown & quota status (`rotator_state.json`) are automatically persisted to disk across restarts |
@@ -57,7 +60,7 @@
 | **Local WAA IPC Signing** | Browserless architecture powered by local Go `waa-signer` (SpiderMonkey 152) over multiplexed stdio NDJSON IPC, aligned with Firefox 152 User-Agent/headers and 5-stage 403 recovery |
 | **Web Management Console** | Built-in web dashboard for account management (groups, presets, text/JSON bundle imports), live request metrics, logging/dump controls, and `config.yaml` hot reloading |
 > [!NOTE]
-> **Memory Footprint**: Operating completely browserless, resident memory is only ~35 - 50 MB with sub-second cold start, running smoothly even on lightweight mobile Termux environments or entry-level servers.
+> **Memory Usage**: The local Go/SpiderMonkey signer creates WAA workers on demand per account. Memory varies with initialized accounts, concurrent requests, and image/video inputs; the project does not publish a fixed RSS benchmark across these workloads. On a 2 GB VPS, start with a small number of accounts and low concurrency, then monitor memory under real requests.
 ## Architecture & Documentation
 
 ```
@@ -95,6 +98,8 @@ Technical reference documentation:
 
 Except for Docker, all native platforms use a unified one-command installer and launcher that automatically configures Python 3.11+, `uv`, Go, Zig, SpiderMonkey static libraries, and builds `waa-signer`.
 
+Use your own Git repository containing these customizations for Termux, Windows, and VPS deployments. For a fresh deployment, `.env.example` configures an ignored `config.local.yaml` for runtime settings. Existing deployments should migrate their active settings before the first pull. See the [three-platform Git update guide](GIT_UPGRADE.zh-CN.md).
+
 ### Android (Termux)
 
 > [!TIP]
@@ -104,8 +109,10 @@ Open Termux and run:
 
 ```bash
 pkg update -y && pkg install -y git
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+REPO_URL='https://github.com/Mooece/ais-pg-upgrade.git'
+git clone --branch main "$REPO_URL" aistudio-api
 cd aistudio-api
+cp .env.example .env
 bash install.sh
 bash start.sh
 ```
@@ -119,13 +126,14 @@ Once started:
 
 ### Windows
 
-Recommended: [Git](https://git-scm.com/) installed (or download and extract the repository ZIP).
+Prerequisite: install [Git for Windows](https://git-scm.com/). The commands below install from this repository's `main` branch.
 
 Double-click **`install.bat`** (or run `.\install.bat`) to set up dependencies and compile `waa-signer.exe` automatically, then double-click **`start.bat`** (or run `.\start.bat`) to launch:
 
 ```bat
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+git clone --branch main https://github.com/Mooece/ais-pg-upgrade.git aistudio-api
 cd aistudio-api
+copy .env.example .env
 .\install.bat
 .\start.bat
 ```
@@ -137,8 +145,9 @@ Open **`http://localhost:8080`** in your browser to access the Web Console.
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+git clone --branch main https://github.com/Mooece/ais-pg-upgrade.git aistudio-api
 cd aistudio-api
+cp .env.example .env
 bash install.sh
 bash start.sh
 ```
@@ -154,11 +163,14 @@ Open **`http://localhost:8080`** in your browser to access the Web Console.
 > [!NOTE]
 > The project's `Dockerfile` uses a multi-stage build that **automatically downloads dependencies and compiles** `waa-signer` inside the image. The container starts with the native local signing daemon enabled out of the box—no manual build steps required.
 
+> [!WARNING]
+> The generic commands below are for local/testing use. With the default empty `api_keys`, the API has no authentication, and `-p 8080:8080` listens on all interfaces. Do not expose this setup publicly. For public hosting, follow [the 2 GB VPS deployment guide](DEPLOY_2GB.md) to configure API keys, a reverse proxy, and HTTPS.
+
 ```bash
 docker run -d \
   --name aistudio-api \
   --restart unless-stopped \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -v aistudio-api-data:/app/data \
   ghcr.io/deconstructedcube/aistudio-api:latest
 ```
@@ -167,7 +179,7 @@ Or run with Docker Compose:
 ```bash
 docker compose up -d
 ```
-Open **`http://localhost:8080`** in your browser to access the Web Console.
+Open **`http://localhost:8080`** on the host to access the Web Console. The upstream GHCR image includes the OpenAI-compatible routes only after it is built from a source version containing those changes.
 
 ---
 
@@ -194,16 +206,30 @@ This service does not store your Google account password. It uses standard web s
 
 ## Third-Party Client Setup Guide (NextChat / Cherry Studio / One API)
 
-> [!WARNING]
-> **Strictly Gemini Protocol Required**!
-> This project is a dedicated reverse proxy strictly adhering to the Google Gemini API specification. It **does NOT provide OpenAI-compatible routes** (such as `/v1/chat/completions`). In all third-party clients, you MUST select **Google Gemini** (or **Gemini**) as the model provider type.
+The service exposes both native Gemini endpoints and OpenAI Chat Completions-compatible endpoints.
 
 | Setting | Value | Description |
 |---|---|---|
-| **Provider / Model Type** | **Google Gemini** | Do NOT select OpenAI or custom OpenAI formats |
-| **API Base URL** | `http://localhost:8080` | If the client mandates a version prefix, enter `http://localhost:8080/v1beta` |
-| **API Key** | Any string (e.g. `aistudio-api`) | If `api_keys` is not set in `config.yaml`, any non-empty string works; otherwise enter your configured key |
-| **Supported Models** | `gemini-3.7-flash`<br/>`gemini-3.8-flash`<br/>`gemini-4-argon`<br/>`gemini-3.1-flash-image` | Supports all active models discovered dynamically from Google AI Studio |
+| **Provider / Model Type** | **OpenAI** or **OpenAI Compatible** | Select the OpenAI-compatible protocol |
+| **API Base URL** | `http://localhost:8080/v1` | For public deployment, use `https://your-domain/v1` |
+| **API Key** | A client API key created in the management console | Configure and use a valid API key before public access; do not use the admin password |
+| **Model** | `gemini-3.7-flash`, etc. | Query `GET /v1/models` for available model IDs |
+
+The compatibility routes support text chat, streaming, function calling, JSON mode, and base64 data URL images. They currently require `n=1` and do not fetch remote `image_url` URLs. Image, audio, and video generation, plus Gemini-specific extensions, remain available through the native Gemini API.
+
+OpenAI SSE sends a comment heartbeat every 10 idle seconds. Non-streaming requests waiting longer than 10 seconds send whitespace keepalives, followed by one complete JSON response. Once non-streaming keepalive starts, HTTP status remains 200; later failures appear in `error.code` / `error.type`, so clients must inspect the final JSON. If SillyTavern's non-streaming relay waits for complete JSON before responding to the browser, it will not forward whitespace on that leg, whose timeout still needs adjustment.
+
+`request_lifecycle` diagnostics log metadata such as request stages, timing, and connection status at INFO by default, without request or response bodies. A successful ASGI `send()` only means the server accepted the send; it does not prove delivery to the actual client.
+
+### Google Upstream Keepalive and Anti-Truncation Models
+
+While waiting for upstream response data, idle Google HTTP/2 connections send a protocol PING every 25 seconds by default. This runs separately from client heartbeats and does not make additional model requests. PING/ACK frames do not reset the business read timeout. They can help maintain idle connections but cannot extend a fixed server-side request deadline.
+
+Refresh the model list in SillyTavern using the OpenAI-compatible API to select a regular model or its `[防截断]` alias, for example `gemini-3.7-flash[防截断]`. The alias asks the model to place its complete answer in the internal `aistudio_full_reply` tool's `content` argument. The gateway validates and unwraps it into ordinary assistant content. No client tool installation or execution is needed.
+
+This mode buffers and validates the complete tool result before sending answer text, so the first content arrives later than normal streaming; heartbeats continue while waiting. Unsupported tools, incomplete results, token limits, and safety stops produce explicit errors. It does not bypass model limits or automatically continue a response. Use a regular model when client tools or JSON response formatting are required. Native Gemini endpoints do not expose these aliases.
+
+The management-authenticated `GET /rotation` includes `upstream_keepalive` installation status, interval, process-local PING/ACK counters, and the latest error type. `installed` may remain false until the first upstream client is created; counters can remain zero until an idle wait occurs.
 
 ## Configuration & Environment Variables
 
@@ -215,11 +241,12 @@ Open `http://localhost:8080` in your browser to access the Web Console.
 | `AISTUDIO_PORT` | int | `8080` | HTTP service listening port |
 | `AISTUDIO_WEB_PASSWORD` | string | `""` | Web Console access password (also checks `AISTUDIO_ADMIN_PASSWORD`) |
 | `AISTUDIO_PROXY` | string | `""` | Outbound proxy URL (`http://`, `https://`, or `socks5://`) |
+| `AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS` | float | `25` | Idle Google HTTP/2 PING interval, from 5 to 240 seconds; restart after changing |
 | `AISTUDIO_DATA_DIR` | string | `data/` | Main data directory for persistent files (`/app/data` in Docker) |
 | `AISTUDIO_ACCOUNTS_DIR` | string | `data/accounts` | Directory for storing account credentials |
 | `AISTUDIO_STATS_FILE` | string | `data/stats.json` | Persistent storage file for model usage metrics |
 | `AISTUDIO_ROTATOR_STATE_FILE` | string | `data/rotator_state.json` | Persistent storage file for account 429 cooldowns and dispatch states |
-| `AISTUDIO_CONFIG_FILE` | string | `config.yaml` | Path to model rules and default tools configuration YAML |
+| `AISTUDIO_CONFIG_FILE` | string | `config.yaml` | Set to `config.local.yaml` by `.env.example` for Git deployments. Existing external paths can be preserved |
 | `AISTUDIO_PERSIST_STATS` | bool | `true` | Persist request and token usage metrics across service restarts |
 | `AISTUDIO_PERSIST_ROTATOR` | bool | `true` | Persist account 429 rate limit dates & cooldowns across restarts |
 | `AISTUDIO_DEFAULT_TEXT_MODEL` | string | `gemini-3.7-flash` | Default text model |
@@ -235,6 +262,23 @@ Open `http://localhost:8080` in your browser to access the Web Console.
 Supported authentication methods:
 - Query param: `?key=YOUR_API_KEY`
 - Header: `x-goog-api-key: YOUR_API_KEY`, `x-api-key: YOUR_API_KEY`, or `Authorization: Bearer YOUR_API_KEY`
+
+### OpenAI-compatible Chat Completions
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-3.7-flash",
+    "messages": [
+      {"role": "system", "content": "Answer concisely."},
+      {"role": "user", "content": "Explain quantum computing in one sentence."}
+    ]
+  }'
+```
+
+For the OpenAI Python SDK, set `base_url` to `http://localhost:8080/v1`; for remote access, use `https://your-domain/v1`. The original `/v1beta/...` routes remain available.
 
 ### cURL
 
@@ -372,6 +416,18 @@ if response.function_calls:
 ---
 
 ## Web Management Console
+
+This workspace adds usage analytics with time/model/result filters, request and token trends,
+model/endpoint distributions, average/P95 duration, first meaningful output latency for successful
+streams, and paginated request metadata with current-page CSV export. Existing cumulative model
+and account statistics remain independent. New request history starts after upgrading and lives
+in `data/request_analytics.sqlite3`, bounded to 90 days and 100,000 records. It stores metrics,
+not prompts, response text, or API keys. Internal retries do not create additional client request
+rows; duration averages include completed requests, and missing token usage is shown as unknown.
+
+For an isolated sample-data UI preview, run `uv run python scripts/preview_dashboard.py --port 8766`
+and open `http://127.0.0.1:8766`. The preview binds to loopback and does not modify real accounts
+or statistics. Add `--empty` for the empty state; normal deployments keep their usual launcher.
 
 The service includes a built-in static Web Console served at `http://localhost:8080`:
 

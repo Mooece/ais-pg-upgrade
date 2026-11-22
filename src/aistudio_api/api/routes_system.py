@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from aistudio_api.api.dependencies import get_runtime_state
@@ -21,7 +22,12 @@ from aistudio_api.infrastructure.gateway.model_defaults import (
     _resolve_config_path,
     invalidate_config_cache,
 )
+from aistudio_api.infrastructure.gateway.transport import (
+    get_upstream_keepalive_status,
+)
 from aistudio_api.infrastructure.utils.logger import get_logger
+
+from .analytics import Granularity, RangeName, RequestStatus, get_analytics_store
 
 logger = get_logger("routes.system")
 
@@ -142,6 +148,28 @@ async def stats():
     return stats_response()
 
 
+@protected_router.get("/stats/analytics")
+async def analytics_stats(
+    range_name: Annotated[RangeName, Query(alias="range")] = "7d",
+    granularity: Granularity = "day",
+    model: Annotated[str | None, Query(max_length=200)] = None,
+    status: RequestStatus | None = None,
+    page: Annotated[int, Query(ge=1, le=100_000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    timezone_offset: Annotated[int, Query(ge=-840, le=840)] = 480,
+) -> dict[str, object]:
+    return await asyncio.to_thread(
+        get_analytics_store().query,
+        range_name,
+        granularity,
+        model,
+        status,
+        page,
+        page_size,
+        timezone_offset,
+    )
+
+
 # ========== 调度与配额管理 API ==========
 
 
@@ -162,12 +190,14 @@ async def get_rotation_status(
             "mode": "sticky",
             "message": "调度器未初始化",
             "accounts": {},
+            "upstream_keepalive": get_upstream_keepalive_status(),
         }
 
     return {
         "enabled": True,
         "mode": "sticky",
         "accounts": rotator.get_all_stats(),
+        "upstream_keepalive": get_upstream_keepalive_status(),
     }
 
 

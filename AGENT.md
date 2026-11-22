@@ -18,7 +18,7 @@
 
 `aistudio-api` 是 Google AI Studio 反向代理网关，提供原生 **Gemini API 兼容接口**（`/v1beta/...`）。
 
-- **Gemini 协议实现**：实现 Gemini 官方 `/v1beta/...` 接口规范（包含 thinking、multimodal、image-generation、function calling 等），不引入其他厂商的协议转译层。
+- **协议实现**：保留 Gemini 官方 `/v1beta/...` 接口规范（包含 thinking、multimodal、image-generation、function calling 等），并在 API 边界提供本工作区定制的 OpenAI Chat Completions 兼容层；核心网关继续使用 Gemini 协议。
 - **无浏览器 WAA 签名架构**：通过本地 `waa-signer` 子进程（嵌入式 SpiderMonkey 152 + Firefox 152 DOM 宿主）经 `stdin`/`stdout` 多路复用 NDJSON IPC 生成 `!proof` 令牌，配合 `httpx` HTTP/2 异步连接池直连 Google AI Studio。
 - **代码即事实标准（Code as Ground Truth）**：以通过测试验证的代码为准。当文档与代码逻辑不一致时，以代码为准并同步更新文档。
 - **接口契约优先（Contract over Brittle Mocks）**：测试应对齐公共接口契约，避免耦合私有属性。

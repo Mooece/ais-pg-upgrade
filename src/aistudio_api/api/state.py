@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from aistudio_api.config import resolve_stats_file, settings
 from aistudio_api.infrastructure.utils.common import atomic_write_json
 
+from .analytics import record_request_usage
+
 if TYPE_CHECKING:
     from aistudio_api.application.account_rotator import AccountRotator
     from aistudio_api.application.account_service import AccountService
@@ -135,6 +137,7 @@ class RuntimeState:
         usage: dict[str, object] | None = None,
         finish_reason: str | None = None,
     ) -> None:
+        record_request_usage(model, result, usage, finish_reason)
         stats = self.model_stats[model]
         stats.requests += 1
         stats.last_used = datetime.now(UTC).isoformat()

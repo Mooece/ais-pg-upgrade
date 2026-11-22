@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 class GeminiInlineData(BaseModel):
@@ -315,3 +315,41 @@ class GeminiCreateDecisionRequest(BaseModel):
     input: str | dict[str, object] | list[dict[str, object]]
     questions: dict[str, GeminiDecisionQuestion]
     temperature: float | None = None
+
+
+class OpenAIChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str
+    messages: list[dict[str, object]]
+    temperature: float | None = None
+    top_p: float | None = None
+    max_tokens: int | None = None
+    max_completion_tokens: int | None = None
+    stop: str | list[str] | None = None
+    presence_penalty: float | None = None
+    frequency_penalty: float | None = None
+    seed: int | None = None
+    stream: bool = False
+    stream_options: dict[str, object] | None = None
+    tools: list[dict[str, object]] | None = None
+    tool_choice: str | dict[str, object] | None = None
+    response_format: dict[str, object] | None = None
+    reasoning_effort: str | None = None
+    n: int | None = None
+    user: str | None = None
+    logprobs: bool | None = None
+    top_logprobs: int | None = None
+    parallel_tool_calls: bool | None = None
+    logit_bias: dict[str, float] | None = None
+    modalities: list[str] | None = None
+    service_tier: str | None = None
+    function_call: str | dict[str, object] | None = None
+    functions: list[dict[str, object]] | None = None
+    store: bool | None = None
+    metadata: dict[str, str] | None = None
+    prompt_cache_key: str | None = None
+    safety_identifier: str | None = None
+    prediction: dict[str, object] | None = None
+    audio: dict[str, object] | None = None
+    web_search_options: dict[str, object] | None = None

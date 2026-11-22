@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -249,6 +250,10 @@ async def test_local_signer_process_startup_crash_diagnostics_and_termux_env(
     tmp_path, monkeypatch
 ):
     """Verify LocalSignerProcess strips Termux LD_PRELOAD, stages noexec binaries, and reports exit signal + stderr tail."""
+    # Simulate Termux without changing the host platform used by pathlib/pytest.
+    monkeypatch.setattr(
+        "aistudio_api.infrastructure.waa.daemon.sys", SimpleNamespace(platform="linux")
+    )
     fake_bin = tmp_path / "waa-signer"
     fake_bin.write_text("#!/bin/sh\n", encoding="utf-8")
     fake_bin.chmod(0o755)

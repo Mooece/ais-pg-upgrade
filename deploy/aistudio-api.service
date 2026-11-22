@@ -1,0 +1,24 @@
+[Unit]
+Description=aistudio-api Gemini gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aistudio
+Group=aistudio
+WorkingDirectory=/opt/aistudio-api
+EnvironmentFile=/opt/aistudio-api/.env
+ExecStart=/opt/aistudio-api/.venv/bin/python /opt/aistudio-api/main.py server --port 8080
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+UMask=0077
+MemoryAccounting=yes
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

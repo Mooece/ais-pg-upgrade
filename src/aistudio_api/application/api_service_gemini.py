@@ -804,6 +804,8 @@ async def _do_generate_content(
     model_path: str,
     req: GeminiGenerateContentRequest,
     client: AIStudioClient,
+    *,
+    require_finish_reason: bool = False,
 ) -> GeminiGenerateContentResponse:
     last_error: Exception | None = None
     auth_manager = Auth403RetryManager()
@@ -843,12 +845,23 @@ async def _do_generate_content(
                 ctx=effective_ctx,
             )
             request_ctx = prepared.ctx or effective_ctx
+            prepared.require_finish_reason = require_finish_reason
             auth_manager.current_prepared = prepared
             output = await client.generate_content(
                 model=normalized.model, prepared=prepared
             )
             auth_manager.current_prepared = None
 
+            if require_finish_reason and (
+                not output.candidates
+                or output.candidates[0].finish_reason in (None, 0, 22)
+            ):
+                raise HTTPException(
+                    502,
+                    detail={
+                        "message": "Full-reply generation ended without a real finish reason"
+                    },
+                )
             final_fr = to_gemini_finish_reason(
                 output.candidates[0].finish_reason if output.candidates else None
             )
@@ -904,6 +917,8 @@ async def _do_generate_content(
             )
         except Exception as exc:
             last_error = exc
+            if require_finish_reason and isinstance(exc, HTTPException):
+                raise
             if isinstance(exc, AuthError) and not isinstance(
                 exc,
                 (
@@ -985,13 +1000,21 @@ async def handle_gemini_generate_content(
     client: AIStudioClient,
     *,
     stream: bool,
+    require_finish_reason: bool = False,
 ):
     if stream:
         return _build_gemini_streaming_response(
-            client=client, req=req, model_path=model_path
+            client=client,
+            req=req,
+            model_path=model_path,
+            require_finish_reason=require_finish_reason,
         )
     # 启动非流式生成任务并提供防 524 代理超时的保活机制 (NONSTREAM_KEEPALIVE)
-    gen_task = asyncio.create_task(_do_generate_content(model_path, req, client))
+    gen_task = asyncio.create_task(
+        _do_generate_content(
+            model_path, req, client, require_finish_reason=require_finish_reason
+        )
+    )
     try:
         # 前 10 秒直接等待结果；绝大多数请求在此期间返回标准对象
         return await asyncio.wait_for(asyncio.shield(gen_task), timeout=10.0)
@@ -1202,6 +1225,7 @@ def _build_gemini_streaming_response(
     client: AIStudioClient,
     req: GeminiGenerateContentRequest,
     model_path: str,
+    require_finish_reason: bool = False,
 ) -> StreamingResponse:
     async def stream_with_retries():
         normalized = None
@@ -1230,6 +1254,7 @@ def _build_gemini_streaming_response(
                 last_stream_error = None
                 final_usage = None
                 final_finish_reason = "STOP"
+                saw_finish_reason = False
                 latest_response_id = None
                 buffered_thought_sig = None
                 try:
@@ -1254,6 +1279,7 @@ def _build_gemini_streaming_response(
                         ctx=effective_ctx,
                     )
                     request_ctx = prepared.ctx or effective_ctx
+                    prepared.require_finish_reason = require_finish_reason
                     auth_manager.current_prepared = prepared
                     async with aclosing(
                         client.stream_generate_content(
@@ -1270,6 +1296,7 @@ def _build_gemini_streaming_response(
                                 final_usage = text if isinstance(text, dict) else None
                             elif event_type == "finish_reason":
                                 if text not in (None, 0, 22):
+                                    saw_finish_reason = True
                                     final_finish_reason = (
                                         to_gemini_finish_reason(text)
                                         if isinstance(text, int)
@@ -1313,6 +1340,13 @@ def _build_gemini_streaming_response(
                                         )
                                     has_yielded_data = True
                                     yield chunk
+                    if require_finish_reason and not saw_finish_reason:
+                        raise HTTPException(
+                            502,
+                            detail={
+                                "message": "Full-reply generation ended without a real finish reason"
+                            },
+                        )
                     if buffered_thought_sig:
                         chunk = format_sse_event(
                             "thought_signature",
@@ -1329,6 +1363,8 @@ def _build_gemini_streaming_response(
                     break
                 except Exception as exc:
                     last_stream_error = exc
+                    if require_finish_reason and isinstance(exc, HTTPException):
+                        raise
                     if (
                         isinstance(exc, AuthError)
                         and not isinstance(

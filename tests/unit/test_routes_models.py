@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
@@ -42,11 +44,39 @@ async def test_get_single_model_returns_model_object(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_v1_models_endpoint_is_removed(monkeypatch):
+@pytest.mark.parametrize("accept", ["application/json", "text/html"])
+async def test_v1_models_endpoint_returns_openai_format(monkeypatch, accept):
     monkeypatch.setattr(settings, "api_keys", frozenset())
+    from aistudio_api.infrastructure.gateway.model_discovery import model_discovery
+
+    monkeypatch.setattr(
+        model_discovery,
+        "get_models",
+        AsyncMock(
+            return_value=[{"id": "gemini-3.7-flash", "displayName": "Gemini Flash"}]
+        ),
+    )
     async with _build_client() as client:
-        response = await client.get("/v1/models")
-        assert response.status_code == 404
+        response = await client.get("/v1/models", headers={"Accept": accept})
+        assert response.status_code == 200
+        assert "application/json" in response.headers["Content-Type"]
+        assert response.json() == {
+            "object": "list",
+            "data": [
+                {
+                    "id": "gemini-3.7-flash",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "google",
+                },
+                {
+                    "id": "gemini-3.7-flash[防截断]",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "google",
+                },
+            ],
+        }
 
 
 @pytest.mark.asyncio

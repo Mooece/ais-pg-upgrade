@@ -246,7 +246,7 @@ def test_encode_request_body_keeps_structured_generation_config_for_gemini_mode(
 
 def test_decode_image_request_maps_generation_config_fields_from_proto_indexes():
     codec = AistudioWireCodec()
-    raw = (FIXTURES / "test_image_input.json").read_text()
+    raw = (FIXTURES / "test_image_input.json").read_text(encoding="utf-8")
 
     request = codec.decode(raw)
 
@@ -264,7 +264,7 @@ def test_decode_image_request_maps_generation_config_fields_from_proto_indexes()
 
 def test_encode_preserves_newly_mapped_proto_fields():
     codec = AistudioWireCodec()
-    raw = (FIXTURES / "test_image_input.json").read_text()
+    raw = (FIXTURES / "test_image_input.json").read_text(encoding="utf-8")
 
     request = codec.decode(raw)
     encoded = codec.encode(request)

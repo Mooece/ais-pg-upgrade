@@ -1,5 +1,7 @@
 # aistudio-api
 
+本仓库 [Mooece/ais-pg-upgrade](https://github.com/Mooece/ais-pg-upgrade) 发布完整定制源码，包含 OpenAI 兼容、回复缓存、调用统计、上游保活和防截断。VPS、Termux 与 Windows 统一跟踪 `main`；已有部署先按[三端 Git 升级指南](GIT_UPGRADE.zh-CN.md)迁移，再通过 Git 拉取更新。原项目为 [DeconstructedCube/aistudio-api](https://github.com/DeconstructedCube/aistudio-api)，保留其源码历史与 MIT 许可。
+
 <p align="center">
   <a href="https://github.com/DeconstructedCube/aistudio-api"><img src="https://img.shields.io/badge/API-Gemini%20v1beta-4285F4?style=flat-square&logo=google" alt="Gemini API"></a>
   <a href="https://hub.docker.com/r/bedrockblock/aistudio-api"><img src="https://img.shields.io/badge/Docker-bedrockblock%2Faistudio--api-2496ED?style=flat-square&logo=docker" alt="Docker Hub"></a>
@@ -47,7 +49,8 @@
 
 | 功能模块 | 说明 |
 |---|---|
-| **Gemini 协议兼容** | 支持 `/v1beta/...` 接口规范，包括 Thinking 思维链、多模态、Function Calling 工具调用、图片生成、TTS 语音合成及视频生成 |
+| **Gemini 协议兼容** | 支持 `/v1beta/...` 接口规范，包括 Thinking、多模态、Function Calling、图片生成、TTS 语音合成及视频生成 |
+| **OpenAI Chat Completions 兼容** | 提供 `/v1/chat/completions` 与 `/v1/models`，支持文本对话、SSE 流式输出、Function Calling、JSON 模式及 base64 图片输入 |
 | **动态模型发现** | 自动向上游同步可用模型列表，支持 `gemini-3.7-flash`、`gemini-3.8-flash` 等最新模型 |
 | **多账号自动轮换** | 支持多账号管理与故障自动切换，按模型独立记录 429 冷却，每日美西午夜自动重置；支持付费模型按订阅等级抢切与 7 分钟周期 Cookie 自动轮换续期 |
 | **运行状态持久化** | 模型调用量、Token 消耗统计 (`stats.json`) 以及账号 429 限额与冷却状态 (`rotator_state.json`) 自动落盘，容器/服务重启不丢失状态 |
@@ -57,7 +60,7 @@
 | **本地 WAA 签名与特征对齐** | 脱离重型浏览器，通过本地 Go 进程 (SpiderMonkey 152) 经 `stdin`/`stdout` 多路复用 IPC 生成证明，严格对齐 Firefox 152 User-Agent 与请求头特征，并支持 5 级 403 自愈重试 |
 | **Web 管理面板** | 提供 Web 管理控制台，支持账号分组与预设方案、文本/JSON 批量导入、调用量监控、日志转储控制及在线热重载 `config.yaml` |
 > [!NOTE]
-> **内存占用参考**：脱离重型浏览器后，服务常驻物理内存仅约 35 - 50 MB，冷启动毫秒级，即使在入门级 Android 手机（Termux）或轻量服务器上亦可稳定高效常驻。
+> **内存占用说明**：新版通过本地 Go/SpiderMonkey 子进程签名，并按账号按需创建 WAA Worker。实际内存会随已使用的账号、并发请求及图片/视频输入变化；项目未提供覆盖这些负载的固定 RSS 基准。2GB VPS 建议从少量账号和低并发开始，并在实际请求时监控内存。
 ## 技术架构与文档
 
 ```
@@ -95,6 +98,8 @@
 
 除了 Docker 容器外，所有原生平台均提供统一的一键安装与启动入口，自动处理环境依赖、`uv`、Python 3.11+、Go、Zig 与本地 WAA 签名引擎编译。
 
+Termux、Windows 和 VPS 都从包含定制功能的自有 Git 仓库拉取。首次部署时可用 `.env.example` 创建 `.env`，把运行配置指向 `config.local.yaml`。已有部署先按指南迁移配置。参见[三端 Git 更新指南](GIT_UPGRADE.zh-CN.md)。
+
 ### Android (Termux)
 
 > [!TIP]
@@ -104,8 +109,10 @@
 
 ```bash
 pkg update -y && pkg install -y git
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+REPO_URL='https://github.com/Mooece/ais-pg-upgrade.git'
+git clone --branch main "$REPO_URL" aistudio-api
 cd aistudio-api
+cp .env.example .env
 bash install.sh
 bash start.sh
 ```
@@ -119,13 +126,14 @@ bash start.sh
 
 ### Windows
 
-前置：已安装 [Git](https://git-scm.com/)（可直接下载项目 ZIP 解压使用）。
+前置：已安装 [Git for Windows](https://git-scm.com/)。下列命令从本仓库的 `main` 分支安装。
 
 双击根目录 **`install.bat`**（或在终端执行 `.\install.bat`）即可全自动完成依赖与本地 `waa-signer.exe` 编译；完成后双击 **`start.bat`**（或执行 `.\start.bat`）启动服务。
 
 ```bat
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+git clone --branch main https://github.com/Mooece/ais-pg-upgrade.git aistudio-api
 cd aistudio-api
+copy .env.example .env
 .\install.bat
 .\start.bat
 ```
@@ -137,8 +145,9 @@ cd aistudio-api
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/DeconstructedCube/aistudio-api.git
+git clone --branch main https://github.com/Mooece/ais-pg-upgrade.git aistudio-api
 cd aistudio-api
+cp .env.example .env
 bash install.sh
 bash start.sh
 ```
@@ -154,11 +163,14 @@ bash start.sh
 > [!NOTE]
 > 本项目 `Dockerfile` 采用多阶段构建，在镜像构建时会**全自动下载依赖并编译** `waa-signer` 二进制服务内置于容器内，容器启动时自动拉起本地原生签名引擎，开箱即用，无需手动构建。
 
+> [!WARNING]
+> 以下通用命令用于本机/测试环境。默认配置的 `api_keys` 为空时 API 免密，且 `-p 8080:8080` 会监听所有网卡；不要直接用于公网。公网部署请按 [2GB VPS 部署步骤](DEPLOY_2GB.md) 配置 API Key、反向代理与 HTTPS。
+
 ```bash
 docker run -d \
   --name aistudio-api \
   --restart unless-stopped \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -v aistudio-api-data:/app/data \
   ghcr.io/deconstructedcube/aistudio-api:latest
 ```
@@ -167,7 +179,7 @@ docker run -d \
 ```bash
 docker compose up -d
 ```
-启动后访问 **`http://localhost:8080`**（或服务器 IP 端口）进入管理控制台。
+启动后在本机访问 **`http://localhost:8080`** 进入管理控制台。上游 GHCR 镜像只有在包含相应代码版本后才具备本文描述的 OpenAI 兼容路由。
 
 ---
 
@@ -194,16 +206,30 @@ docker compose up -d
 
 ## 第三方客户端配置指引 (NextChat / Cherry Studio / One API 等)
 
-> [!WARNING]
-> **必须选择 Google Gemini 协议**！
-> 本项目是专为 Google Gemini API 规范打造的反向代理网关，**不包含 OpenAI 协议兼容接口**（如 `/v1/chat/completions`）。在任何客户端中配置时，模型提供商类型请务必选择 **Google Gemini**（或 **Gemini**），切勿选择 OpenAI 格式。
+服务同时提供 Gemini 原生接口与 OpenAI Chat Completions 兼容接口。使用 OpenAI SDK 或 OpenAI 类型客户端时：
 
 | 配置项目 | 填写内容 | 说明 |
 |---|---|---|
-| **模型提供商 (Provider)** | **Google Gemini** | 严禁选择 OpenAI 或自定义 OpenAI 格式 |
-| **API Base URL / 代理地址** | `http://localhost:8080` | 若客户端要求必须带版本号，可填写 `http://localhost:8080/v1beta` |
-| **API Key / 密钥** | 任意字符串 (如 `aistudio-api`) | 若未在服务端 `config.yaml` 中配置 `api_keys`，客户端填写任意非空字符即可；若服务端已配置鉴权 Key 则需匹配 |
-| **支持的模型名称** | `gemini-3.7-flash`<br/>`gemini-3.8-flash`<br/>`gemini-4-argon`<br/>`gemini-3.1-flash-image` | 自动向上游同步所有可用模型，支持官方全部功能 |
+| **模型提供商 (Provider)** | **OpenAI** 或 **OpenAI Compatible** | 选择 OpenAI 兼容协议 |
+| **API Base URL / 代理地址** | `http://localhost:8080/v1` | 公网部署时填 `https://你的域名/v1` |
+| **API Key / 密钥** | 管理面板中创建的客户端 API Key | 公网使用前必须配置有效 API Key；不要使用管理面板密码 |
+| **模型名称** | `gemini-3.7-flash` 等 | 模型 ID 可通过 `GET /v1/models` 查询 |
+
+支持标准文本对话、流式输出、Function Calling、JSON 模式和 base64 data URL 图片输入。OpenAI 兼容接口目前只支持 `n=1`，不抓取远程 `image_url`；图片生成、音频/视频生成、Gemini 专有扩展仍请使用 Gemini 原生接口。
+
+OpenAI SSE 空闲时每 10 秒发送一次注释心跳；非流式请求等待超过 10 秒后发送空白保活，最后返回一个完整 JSON。非流式保活开始后 HTTP 状态保持 200，后续失败通过 `error.code` / `error.type` 表达，客户端需检查最终 JSON。若 SillyTavern 非流式中转等待完整 JSON 后才响应浏览器，空白保活不会传到浏览器这一段，仍需调整该链路的超时。
+
+`request_lifecycle` 诊断默认以 INFO 级别记录请求阶段、耗时与连接状态等元数据，不记录请求或响应正文；ASGI `send()` 成功只表示服务器接受了发送，不能证明实际客户端已收到数据。
+
+### Google 上游保活与防截断模型
+
+Google 上游 HTTP/2 连接在等候响应且没有数据时，默认每 25 秒发送协议 PING；这与发给客户端的 SSE 心跳分别运行。PING/ACK 不会重置业务读取超时，也不额外发送模型请求。它用于缓解空闲连接断开，不能延长 Google 服务端的固定请求期限。
+
+在 SillyTavern 中使用 OpenAI 兼容地址并重新获取模型列表后，可选择普通模型或同名的 `[防截断]` 选项，例如 `gemini-3.7-flash[防截断]`。该模式要求模型把完整回答放入内部 `aistudio_full_reply` 工具的 `content` 参数，网关校验后取出正文，返回普通助手消息；内部工具不需要在酒馆安装，也不会作为客户端工具执行。
+
+防截断模式会先收集并验证完整工具结果，因此首段正文比普通流式模式晚，等待期间仍会发送保活。模型不支持工具、工具结果不完整、触发长度或安全限制时会返回明确错误；该功能不突破模型输出上限，也不自动续写。不要同时开启酒馆工具调用或 JSON 响应格式；需要这些功能时选择普通模型。原生 Gemini 接口不提供此别名。
+
+受管理鉴权保护的 `GET /rotation` 返回 `upstream_keepalive`，包含安装状态、PING 间隔、发送及 ACK 计数和最近错误类型。计数从当前进程启动起累计；首次创建上游客户端前 `installed` 可为 `false`，尚未发生长等待时计数为零。
 
 ## 配置与环境变量
 
@@ -216,11 +242,12 @@ docker compose up -d
 | `AISTUDIO_PORT` | int | `8080` | API 服务监听端口 |
 | `AISTUDIO_WEB_PASSWORD` | string | `""` | Web 控制台访问密码（亦可设置 `AISTUDIO_ADMIN_PASSWORD`） |
 | `AISTUDIO_PROXY` | string | `""` | 出口代理地址，支持 `http://`、`https://` 或 `socks5://` |
+| `AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS` | float | `25` | Google 上游 HTTP/2 空闲 PING 间隔；支持 5～240 秒，修改后重启服务 |
 | `AISTUDIO_DATA_DIR` | string | `data/` | 主数据持久化根目录（Docker 下为 `/app/data`） |
 | `AISTUDIO_ACCOUNTS_DIR` | string | `data/accounts` | 账号持久化凭据目录 |
 | `AISTUDIO_STATS_FILE` | string | `data/stats.json` | 模型调用与 Token 使用量统计持久化文件 |
 | `AISTUDIO_ROTATOR_STATE_FILE` | string | `data/rotator_state.json` | 账号调度与 429 冷却状态持久化文件 |
-| `AISTUDIO_CONFIG_FILE` | string | `config.yaml` | 模型规则与默认工具配置文件路径 |
+| `AISTUDIO_CONFIG_FILE` | string | `config.yaml` | `.env.example` 为 Git 部署选用 `config.local.yaml`。已有外部配置可沿用原路径 |
 | `AISTUDIO_PERSIST_STATS` | bool | `true` | 是否持久化模型调用与 Token 统计（1=开启，0=关闭） |
 | `AISTUDIO_PERSIST_ROTATOR` | bool | `true` | 是否持久化账号 429 冷却与调度状态（1=开启，0=关闭） |
 | `AISTUDIO_DEFAULT_TEXT_MODEL` | string | `gemini-3.7-flash` | 默认文本模型 |
@@ -237,6 +264,23 @@ docker compose up -d
 - 请求头：`x-goog-api-key: YOUR_API_KEY`、`x-api-key: YOUR_API_KEY` 或 `Authorization: Bearer YOUR_API_KEY`
 
 ### cURL 调用
+
+### OpenAI 兼容接口
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-3.7-flash",
+    "messages": [
+      {"role": "system", "content": "请简洁回答。"},
+      {"role": "user", "content": "用一句话介绍量子计算。"}
+    ]
+  }'
+```
+
+Python SDK 的 `base_url` 填 `http://localhost:8080/v1`；远程使用时改为 `https://你的域名/v1`。原有 Gemini 示例和 `/v1beta/...` 路由保持可用。
 
 <details>
 <summary><b>1. 查询模型列表</b></summary>
@@ -372,6 +416,17 @@ if response.function_calls:
 ---
 
 ## Web 管理控制台
+
+本工作区增加「调用概览」：按时间、模型、结果筛选请求与 Token 趋势，查看模型/端点分布、
+平均耗时、P95 和成功流式请求的首个输出耗时；请求明细支持展开、分页和导出本页 CSV。
+原有累计模型及账号统计继续保留，不受新面板筛选影响。明细从升级后开始记录，存储在
+`data/request_analytics.sqlite3`，保留最近 90 天且最多 100,000 条，只记录指标元数据，
+不记录提示词、回复正文或 API Key。统计以客户端请求为单位，内部重试不另计请求；
+平均耗时包含已结束请求，首个输出不计保活、角色及仅用量帧，缺少用量时显示「—」。
+
+仅查看界面效果可运行 `uv run python scripts/preview_dashboard.py --port 8766`，访问
+`http://127.0.0.1:8766`。该预览绑定本机回环地址，使用明确标注的独立样例数据；
+`--empty` 可预览空状态，不会修改真实账号或统计。正常部署仍使用原有启动命令。
 
 系统内置静态打包的 Web 前端管理控制台（访问 `http://localhost:8080`）：
 

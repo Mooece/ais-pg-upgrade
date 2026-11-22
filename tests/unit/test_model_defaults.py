@@ -292,8 +292,9 @@ tier_quotas:
     assert ov_scalar.daily_token_limit is None
 
 
-def test_repo_config_matches_playground_quotas_and_paid_tiers(monkeypatch):
-    repo_config = Path(__file__).resolve().parents[2] / "config.yaml"
+def test_shipped_defaults_match_playground_quotas_and_paid_tiers(monkeypatch):
+    # The root config is user-managed and deliberately preserved by upgrades.
+    repo_config = Path(__file__).resolve().parents[2] / "defaults" / "config.yaml"
     monkeypatch.setenv("AISTUDIO_CONFIG_FILE", str(repo_config))
 
     invalidate_config_cache()

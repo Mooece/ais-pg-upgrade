@@ -6,6 +6,8 @@ import { usePolling } from '@/composables/usePolling.ts'
 import StatCard from '@/components/ui/StatCard.vue'
 import ModelStatsTable from '@/components/dashboard/ModelStatsTable.vue'
 import QuickApiExamples from '@/components/dashboard/QuickApiExamples.vue'
+import RequestAnalytics from '@/components/dashboard/RequestAnalytics.vue'
+import ReplyCache from '@/components/dashboard/ReplyCache.vue'
 import {
   UserCheck,
   Users,
@@ -62,6 +64,17 @@ usePolling(loadData, 10000)
 
 <template>
   <div class="space-y-6">
+    <RequestAnalytics />
+    <ReplyCache />
+
+    <div class="pt-5 border-t border-gray-200/80">
+      <h2 class="text-base font-semibold text-gray-900">
+        累计模型与账号统计
+      </h2>
+      <p class="text-xs text-gray-400 mt-1.5">
+        保留原有累计数据，以下统计不受上方时间与模型筛选影响。
+      </p>
+    </div>
     <!-- Stat Cards Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <StatCard

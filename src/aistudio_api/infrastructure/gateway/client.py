@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -51,6 +52,7 @@ class PreparedRequest:
     model: str = ""
     snapshot: str = ""
     ctx: SessionContext | None = None
+    require_finish_reason: bool = False
 
 
 class AIStudioClient:
@@ -236,7 +238,13 @@ class AIStudioClient:
             headers=effective_prep.headers,
             ctx=effective_prep.ctx,
         )
-        raw_text = raw.decode("utf-8", errors="replace")
+        try:
+            raw_text = raw.decode(
+                "utf-8",
+                errors="strict" if effective_prep.require_finish_reason else "replace",
+            )
+        except UnicodeDecodeError as exc:
+            raise TransportError("Full-reply response contains invalid UTF-8") from exc
         if status != 200:
             raise classify_error(status, raw_text)
         if not raw_text.strip():
@@ -245,6 +253,18 @@ class AIStudioClient:
             raise SessionExpiredError("登录态已失效: 被重定向至 Google 登录页")
         if is_html_payload(raw_text):
             raise TransportError("upstream returned HTML error page on HTTP 200")
+        if effective_prep.require_finish_reason:
+            # Normal parsing permits recovery of damaged JSON. The opt-in
+            # envelope must never treat a repaired argument object as complete.
+            payload = raw_text.strip()
+            if payload.startswith(")]}'"):
+                payload = payload[4:].lstrip()
+            try:
+                json.loads(payload)
+            except json.JSONDecodeError as exc:
+                raise TransportError(
+                    "Full-reply response contains incomplete JSON"
+                ) from exc
         output = parse_text_output(raw_text)
         output.model = model
         return output

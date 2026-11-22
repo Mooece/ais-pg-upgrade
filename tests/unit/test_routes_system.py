@@ -96,12 +96,38 @@ async def test_rotation_status_and_clear_cooldown():
         data = resp.json()
         assert data["mode"] == "sticky"
         assert "accounts" in data
+        keepalive = data["upstream_keepalive"]
+        assert keepalive["enabled"] is True
+        assert isinstance(keepalive["installed"], bool)
+        assert keepalive["interval_seconds"] <= 240
+        assert "pings_sent" in keepalive
+        assert "acks_received" in keepalive
+        assert "last_error" in keepalive
+        assert not any("cookie" in key.lower() for key in keepalive)
 
         resp_clear = await client.post(
             "/rotation/clear-cooldown", json={"account_id": "acc_1"}
         )
         assert resp_clear.status_code == 200
         mock_rotator.clear_cooldown.assert_called_once_with("acc_1", model=None)
+
+
+@pytest.mark.asyncio
+async def test_upstream_keepalive_status_requires_management_auth(monkeypatch):
+    from aistudio_api.api.state import runtime_state
+    from aistudio_api.config import settings
+
+    monkeypatch.setattr(settings, "web_password", "admin-test-password")
+    monkeypatch.setattr(runtime_state, "rotator", None)
+    async with _client() as client:
+        denied = await client.get("/rotation")
+        assert denied.status_code == 401
+        allowed = await client.get(
+            "/rotation", headers={"Authorization": "Bearer admin-test-password"}
+        )
+        assert allowed.status_code == 200
+        assert allowed.json()["enabled"] is False
+        assert allowed.json()["upstream_keepalive"]["enabled"] is True
 
 
 @pytest.mark.asyncio

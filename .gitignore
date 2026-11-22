@@ -1,6 +1,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
+.pytest-tmp-*/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -16,6 +18,10 @@ dumps/
 .vscode/
 !docs/BOTGUARD_VERIFICATION_CHAIN.md
 .env
+.env.*
+!*.env.example
+config.local.yaml
+deploy/vps.env
 uv.toml
 .uv.toml
 uv.lock
@@ -31,6 +37,7 @@ db/
 node_modules/
 web/node_modules/
 web/dist/
+*.tsbuildinfo
 
 # Repomix outputs
 repomix-output.*

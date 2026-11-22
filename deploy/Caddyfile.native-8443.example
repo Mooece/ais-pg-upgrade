@@ -1,0 +1,12 @@
+# Optional native template when another service already owns TCP/UDP 443.
+# Replace {$DOMAIN} before installing. TCP 80 must be free and reachable for
+# ACME HTTP-01 validation, or configure an existing certificate/DNS challenge.
+# Automatic redirects are disabled: visit https://your-domain:8443 explicitly.
+{
+	auto_https disable_redirects
+}
+
+https://{$DOMAIN}:8443 {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}
