@@ -1,5 +1,5 @@
 # aistudio-api 升级补丁
-## 新增功能来源于其他项目，这里只是做一个整理合并
+## 新增功能灵感来源于其他项目，这里只是做一个整理合并
 **原项目地址：[DeconstructedCube/aistudio-api](https://github.com/DeconstructedCube/aistudio-api)。**
 
 **致谢：感谢 DeconstructedCube 及原项目贡献者提供 aistudio-api，感谢其引用的 WAA、协议与前端开源项目。本仓库在原项目基础上提供定制升级补丁，修改文件中保留了原项目实现。**
