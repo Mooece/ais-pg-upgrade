@@ -59,16 +59,16 @@ _h2_last_error: str | None = None
 
 def _configured_ping_interval() -> float:
     global _h2_last_error
-    interval = os.environ.get("AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS", "25")
+    interval = os.environ.get("AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS", "240")
     try:
         parsed = float(interval)
         if math.isfinite(parsed) and 5.0 <= parsed <= 240.0:
             return parsed
     except ValueError:
         pass
-    _h2_last_error = "Invalid HTTP/2 PING interval; using 25 seconds (range: 5..240)"
+    _h2_last_error = "Invalid HTTP/2 PING interval; using 240 seconds (range: 5..240)"
     logger.warning("%s", _h2_last_error)
-    return 25.0
+    return 240.0
 
 
 H2_PING_INTERVAL_SECONDS = _configured_ping_interval()

@@ -74,7 +74,7 @@ def connection(peer: H2Peer) -> AsyncHTTP2Connection:
 @pytest.fixture(autouse=True)
 def install(monkeypatch: pytest.MonkeyPatch) -> None:
     transport._install_http2_ping_keepalive()
-    # Accelerated wall clock: 25 seconds => 0.01 seconds, 900 => 0.36.
+    # Accelerate PINGs independently to exercise repeated ACK handling.
     monkeypatch.setattr(transport, "H2_PING_INTERVAL_SECONDS", 0.01)
 
 
@@ -199,7 +199,7 @@ def test_invalid_ping_interval_uses_safe_default(
     value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("AISTUDIO_UPSTREAM_H2_PING_INTERVAL_SECONDS", value)
-    assert transport._configured_ping_interval() == 25.0
+    assert transport._configured_ping_interval() == 240.0
 
 
 def test_incompatible_httpcore_hook_keeps_existing_implementation(

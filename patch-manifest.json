@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release_id": "20261122-full-reply-stream-d9e11378",
+  "release_id": "20261122-upstream-ping240-c30197a9",
   "upstream": {
     "url": "https://github.com/DeconstructedCube/aistudio-api",
     "commit": "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
@@ -112,7 +112,10 @@
       "path": "src/aistudio_api/infrastructure/gateway/transport.py",
       "action": "write",
       "base_sha256": "820978eb84eb0bd44026a7d9ea74e7a3c501b0f4864985203cc66fcf30718fe0",
-      "payload_sha256": "11315baa95762748fcc44ecfbbaa1282c2c7784e6885753fc2cbf1e0b76dc73f"
+      "payload_sha256": "76d1419ff46adafb71afe1bacd2060fab6a713fa4cf7808537b8ddfc1d05e141",
+      "accepted_sha256": [
+        "11315baa95762748fcc44ecfbbaa1282c2c7784e6885753fc2cbf1e0b76dc73f"
+      ]
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/wire_types.py",
@@ -373,7 +376,10 @@
       "path": "tests/unit/test_upstream_h2_keepalive.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "13effc66f1b5fe981b7bf1057985cbab613b126127f41a390ee7322b1f000ebb"
+      "payload_sha256": "811ac331a967c1415b28f2dde2e81cb6c84f5371f1e72bb10f84c125ef2c0285",
+      "accepted_sha256": [
+        "13effc66f1b5fe981b7bf1057985cbab613b126127f41a390ee7322b1f000ebb"
+      ]
     },
     {
       "path": "tests/unit/test_waa_engine.py",
