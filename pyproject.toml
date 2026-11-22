@@ -1,0 +1,16 @@
+[project]
+name = "ais-pg-upgrade"
+version = "1.0.0"
+description = "Patch installer for an existing DeconstructedCube/aistudio-api installation"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-p no:anyio -p no:asyncio"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["payload"]

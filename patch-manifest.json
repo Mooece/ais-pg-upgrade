@@ -1,0 +1,454 @@
+{
+  "schema_version": 1,
+  "release_id": "20261122-patch-only-443fa3f9",
+  "upstream": {
+    "url": "https://github.com/DeconstructedCube/aistudio-api",
+    "commit": "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
+  },
+  "entries": [
+    {
+      "path": "scripts/test.ps1",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "e13496b1f15fe5a2927714dfc67aca3eeca6ca27ad3038057f8ab3999cccf65a"
+    },
+    {
+      "path": "src/aistudio_api/api/analytics.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "9c5eca194a87ac27df6799147fdeb1b85dcba612aa5744c4bde4d1d58c2dab98"
+    },
+    {
+      "path": "src/aistudio_api/api/analytics_middleware.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "5fe64afc4830a0d2bef4462520c0457dcc3a84a439b6ee8aa398f09ebf9236ce"
+    },
+    {
+      "path": "src/aistudio_api/api/app.py",
+      "action": "write",
+      "base_sha256": "13639c77194b9c0ac3bef6f4cd58190cdc78f14356859fb7c1267f5e9a94926e",
+      "payload_sha256": "f655e70526b4cddfffafa37cab7f21072260f779914e6f1308dbbefc0c28e12d"
+    },
+    {
+      "path": "src/aistudio_api/api/reply_cache.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "ab67fd566266d2fd08b9d49f1ae3cd3883646035f301457fbeeacaf40d0c74e7"
+    },
+    {
+      "path": "src/aistudio_api/api/reply_cache_response.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "383f6fd9f35a6ffc9309fe83d2ffa81dc8976572950a1512af987f6eee66db34"
+    },
+    {
+      "path": "src/aistudio_api/api/reply_cache_tasks.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "0421a2d59265316c9488573608460278a04a63438f3ab2a7c4c45d7bd5fc2937"
+    },
+    {
+      "path": "src/aistudio_api/api/routes_openai.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "42f6da69ad47b34a0ef2b11a91dff9b79c35429947249e636a19d7c29e64bc38"
+    },
+    {
+      "path": "src/aistudio_api/api/routes_system.py",
+      "action": "write",
+      "base_sha256": "6d521c2cfb73fb2ef506cdce2a0906fa4cf091a336712a945b956ba4129cbe22",
+      "payload_sha256": "647fcb76cc993970f44df85141219b0d62e55b4110cfd4955026de5d39a193f1"
+    },
+    {
+      "path": "src/aistudio_api/api/schemas.py",
+      "action": "write",
+      "base_sha256": "e718fd2889d5d516c3a006ffde217cfc311316e2643a16216d2ce6d69cdcd866",
+      "payload_sha256": "8a357700cf1f72ab1ad02d76292a249e87d5b6fee4958d38c2e54a69d3aae1bf"
+    },
+    {
+      "path": "src/aistudio_api/api/state.py",
+      "action": "write",
+      "base_sha256": "554dce4f0f9526f643ce955c0471d30d975de7d0b3cf7d99f797ed1aa4fe0108",
+      "payload_sha256": "029f39f5cbc5c931956dbb578a7f79b66d12926576cfb1b1334e692d0eab2f24"
+    },
+    {
+      "path": "src/aistudio_api/application/anti_truncation.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "15dcb12b322c1e68ddb6e10642b33e93aebc25c349e84ce34b09c108831864e1"
+    },
+    {
+      "path": "src/aistudio_api/application/api_service_gemini.py",
+      "action": "write",
+      "base_sha256": "5800ec44320f3d32311f0064bd8bc771898aafe12d0691c1d14e39596ff8de0a",
+      "payload_sha256": "3a131fe22d3261455bd5060072a8cc8f0be034039284540eef04b4fc43d65efa"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/gateway/client.py",
+      "action": "write",
+      "base_sha256": "c3d971ff8800f71238986ea716b25a3a454b4277ddb363472bff5c34f742e55f",
+      "payload_sha256": "9310db29ae73e7c3ca8c32af35aab93953adfb5c59ef2838c0913eac5df5174f"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/gateway/stream_parser.py",
+      "action": "write",
+      "base_sha256": "675c00d788c5a749d6899da7a8772ed22f7318d90a32ff8619a26fdcb1a117b5",
+      "payload_sha256": "2bdec2110c95ca431a9e7640d68eb9e0de30a64da548c8c3a43197fbefa1af23"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/gateway/streaming.py",
+      "action": "write",
+      "base_sha256": "0510667cae64ecf583b94509eb0452abacb8488cedaa73594ea164a01d78329a",
+      "payload_sha256": "1b1d8bf5b2d4e402cf9a79478e1d880083d72e56e93b9f6bcf967e6ec5d24ef3"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/gateway/transport.py",
+      "action": "write",
+      "base_sha256": "820978eb84eb0bd44026a7d9ea74e7a3c501b0f4864985203cc66fcf30718fe0",
+      "payload_sha256": "11315baa95762748fcc44ecfbbaa1282c2c7784e6885753fc2cbf1e0b76dc73f"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/gateway/wire_types.py",
+      "action": "write",
+      "base_sha256": "05a1110fba06965d59194cde16eb4762b638dc694a5c4db0f383db2775c68707",
+      "payload_sha256": "0a42d754ba8596c307fc8841d3613032ebb65b42e530ed10bfa4a3ffc3015bbe"
+    },
+    {
+      "path": "src/aistudio_api/infrastructure/utils/request_diagnostics.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "0a157f93811da18e1ca6aaf7e27a74f621b2bb8a0a7ba5297324a98e499fbae2"
+    },
+    {
+      "path": "src/aistudio_api/static/.vite/manifest.json",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "8bc025fd36b260fc007b713b88c5cb19a7111c55d8acc0dd7a199f856524f72a"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/AccountsView-BPug4Bcm.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "f93a3dab5e0589518a5095cc64edce110ee39e82d57e5856141ae819c41d6db7"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/AccountsView.js",
+      "action": "delete",
+      "base_sha256": "d6a2a55e4d69893a1afa600fbacc25549b2cbd4d6fe0918f35edad09e4cf3030",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/Badge.vue_vue_type_script_setup_true_lang-PLWezJcT.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "2a6fb4b9d990d90d672042d2fa18e60800adbcd7d9389930a4e2632fa7ef37a3"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/Badge.vue_vue_type_script_setup_true_lang.js",
+      "action": "delete",
+      "base_sha256": "ff70d7f2ba476a27a744df7dba3d5cd49f45e83c9622c21adcee8bc455272750",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/DashboardView-BaK_waI1.css",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "1e698d9132d14ca22c5f3ff9a2c82d606c3e5ce95637999e951144e430513b36"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/DashboardView-C3bXb6f8.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "7be8c7d6292e13b6f9413ebe45b3d2d670230efbdb426d22028d376e3f85db4e"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/DashboardView.js",
+      "action": "delete",
+      "base_sha256": "0f41f2448347aa5c8f68f2ea53b1b49c03bad09f7b1adf1a82bd588439342289",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/LoginView-7K-lZ2ib.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "f46c0cb987b74cd133b633b5a1a26e97595adda93c188122fddd720110989e84"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/LoginView.js",
+      "action": "delete",
+      "base_sha256": "9724d2818cd425b90355cc8ee6009427544176383255f59017ee714730708b53",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/SettingsView-Bb74AqRB.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "4b4563390706c39edd08a06856d9d04ce8c9f5ae20a4226e856680b9fd21105e"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/SettingsView.js",
+      "action": "delete",
+      "base_sha256": "298f94f9eed24823641fa90abe2b0e4e584915f834f3278291695c57b2fbd7ea",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/format-Pcx8DYZs.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "4f254e9d83929fced51c232c587379ac46f1fc1e71a7496d2622d2d4b3584bac"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/format.js",
+      "action": "delete",
+      "base_sha256": "4f254e9d83929fced51c232c587379ac46f1fc1e71a7496d2622d2d4b3584bac",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/index-B6ZujRc5.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "4984fbcf90400d863083db142c3562d236b4340dfe45e73a10acc300b37d361d"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/index-hBNmtZf6.css",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "cada1efd2544cb0c9271ff707894c71158abdf5b5aa908027121f4cb5371c6c7"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/index.css",
+      "action": "delete",
+      "base_sha256": "afb40bd9fdd54799efa97900c29b4255b63868240b0830c460eadf531ebd7ce2",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/index.js",
+      "action": "delete",
+      "base_sha256": "cf4bc712cd7fa56d9cdea74358de87ab4c47cb0281bf3794bd29b3e5f6f3f69c",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/useClipboard-CPEN7-pL.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "8a5a836aa6f40e4791e38837eb12bcba1ab46741c801e525a9bfaa207a451476"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/useClipboard.js",
+      "action": "delete",
+      "base_sha256": "18aae026932a4d38b18265d9b368f176c4302b20f7fcfbb0439aea95268b7869",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-icons-37iq4xNM.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "87a489db4d576136a6ce3a4d083794d56caee0079ce5b3fd73fba82d3d108813"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-icons.js",
+      "action": "delete",
+      "base_sha256": "997e0806141301987e5717992fb4af7a6db2f486d09e8f2e3ba5f0e5d1c77410",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-vue-BjScXn2E.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "8c564664719700f7814b02d100a073dcd645c55d0a087f8d6ff714bce229ded8"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-vue.js",
+      "action": "delete",
+      "base_sha256": "9f3d14180889288ca94cef38644566fa33a086a16d25db313c8c33721a13e1e8",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-yaml-ZKzz1dNL.js",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "30b2677a86191d6df0b1fcfd6ec0182605f02c42fe027a669ece671ad9830d3d"
+    },
+    {
+      "path": "src/aistudio_api/static/assets/vendor-yaml.js",
+      "action": "delete",
+      "base_sha256": "30b2677a86191d6df0b1fcfd6ec0182605f02c42fe027a669ece671ad9830d3d",
+      "payload_sha256": null
+    },
+    {
+      "path": "src/aistudio_api/static/index.html",
+      "action": "write",
+      "base_sha256": "eb4acac82b81cc01ce374d9c277136a0955b422741e045c8d35f2e1877d5be09",
+      "payload_sha256": "df7c358cf02024320195135b3ed092fbfbd5b428e80994848dd21b6536edfeae"
+    },
+    {
+      "path": "tests/unit/test_anti_truncation.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "d6da994aa42af3d001490ca68cbe26fc2c24ff87009f5a8fe739709f40b52018"
+    },
+    {
+      "path": "tests/unit/test_model_defaults.py",
+      "action": "write",
+      "base_sha256": "157abc093ceec6044edda409f9ca015b2d0829a0383e813f9cb535b90d8215f4",
+      "payload_sha256": "ee820811497e6084ad61aec637449decd8ed3ed75be15a49d8b77052e8b80177"
+    },
+    {
+      "path": "tests/unit/test_openai_keepalive.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "44c2cf3a772cc0f66a8e529ecb03da9bd4aa6479a9dc6bd970656497a9568f0e"
+    },
+    {
+      "path": "tests/unit/test_reply_cache.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "61f8c03fce22af2adead91e275dac1cc345b07449560cd8da801e8e25c485b1c"
+    },
+    {
+      "path": "tests/unit/test_reply_cache_routes.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "6b9d374467648f2778b66648d5b7058836176f8db00753945cf47350fd24016b"
+    },
+    {
+      "path": "tests/unit/test_reply_cache_tasks.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "62705d44947568af212455bcb4b387d9937543d21792041996cd00037bdd43a0"
+    },
+    {
+      "path": "tests/unit/test_request_analytics.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "1feea3543731361674347f9f46d83a3819f565231b32df925cc52a29e0dcfeb6"
+    },
+    {
+      "path": "tests/unit/test_request_diagnostics.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "49455a5fc312e40b544d097d06d4ad008b7c7a2637cfaf7d150822364bdc2029"
+    },
+    {
+      "path": "tests/unit/test_response_parser.py",
+      "action": "write",
+      "base_sha256": "1d7cd7287090eaa64051968f173cb2d1f1cb20e26bd5f3a8269bfd09cd2b116d",
+      "payload_sha256": "59c432744cf0d48a95404bbd8be4593a8aa3c2b79a05fb9ba7c16c914634d212"
+    },
+    {
+      "path": "tests/unit/test_routes_models.py",
+      "action": "write",
+      "base_sha256": "824a4ba03df0724542a4ec131ba1079f4110cae412c0ac3cd3ab016c5caa978a",
+      "payload_sha256": "f61db896c7efdbaf650d1ae653ce674fa4c95a728976f7816c9126d54eaaa120"
+    },
+    {
+      "path": "tests/unit/test_routes_openai.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "4736879265bfca0a82237accf96772ebe7222ff47c33f52cc9e0871218dda654"
+    },
+    {
+      "path": "tests/unit/test_routes_system.py",
+      "action": "write",
+      "base_sha256": "7d4f892874e96bfb8fda31f18c632093310b930da4dc8ccd82f341086442ffdf",
+      "payload_sha256": "425bcd425495a7e17676abce9937dd1cd40153ee075ae1ba07b9d029efd0bfd1"
+    },
+    {
+      "path": "tests/unit/test_transport_diagnostics_merge.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "a5d2828cb3bc85a77fdea08ba4b79766ac4fc2b1e5b01a0f052374a56f3ecf0d"
+    },
+    {
+      "path": "tests/unit/test_upstream_h2_keepalive.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "13effc66f1b5fe981b7bf1057985cbab613b126127f41a390ee7322b1f000ebb"
+    },
+    {
+      "path": "tests/unit/test_waa_engine.py",
+      "action": "write",
+      "base_sha256": "e5bb21afe6d199d6cfb69c9f7de8689ed743dd217f0b692600ca0c8d51c1d3dc",
+      "payload_sha256": "6f3f95c3a6976405233f54e6c49fc38dc61adbd593138448ef255fd15680de6c"
+    },
+    {
+      "path": "tests/unit/test_wire_codec.py",
+      "action": "write",
+      "base_sha256": "2fc01a07518f3931640a05c312de3a5743f5b0f44cda9c735d9c89e539440b90",
+      "payload_sha256": "21075fe565257636165b839a367bc139b489f24ac19f7c7ab8633a40a263574e"
+    },
+    {
+      "path": "web/package.json",
+      "action": "write",
+      "base_sha256": "0925282236c5a6534514e79be990f80902ad26ee6e0fe3f61eed6ec7a1bf237a",
+      "payload_sha256": "286d11a45b30bbd57b1dc4a91ed471b827b5a1d6329cbe4a1d673aa008d1ad4d"
+    },
+    {
+      "path": "web/scripts/verify-build.mjs",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "d13ac1932f3f9ea65a1a4cff4cb2fb19470bb813fe61269d48c17b6dc511d478"
+    },
+    {
+      "path": "web/src/api/analytics.ts",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "29d3f87ea26fc420de4f83e355a6839b588e861611ce93fa732777f7ff019b8c"
+    },
+    {
+      "path": "web/src/api/replyCache.ts",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "4f6c126b2f1275aa12ecc8a613c7d0e80c1bfce411eb0c138086528c28be6a36"
+    },
+    {
+      "path": "web/src/components/dashboard/ReplyCache.vue",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "7f84d20a278a6f34c928f52454ee01b3a708ceac2c34ee06269208c67dff0aad"
+    },
+    {
+      "path": "web/src/components/dashboard/RequestAnalytics.vue",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "f7abcc2da7112f6854577925b3bf2edfe53ea27f65647ba8f803eb8336221e20"
+    },
+    {
+      "path": "web/src/components/dashboard/UsageChart.vue",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "23dc9b3312755ccbc9744fbf094de2e8be76af27e702b1912476a10074454639"
+    },
+    {
+      "path": "web/src/components/dashboard/UsageDistribution.vue",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "c84f08e021092ade2536fb92e7fe5103f205e8ec1834ad8860bb553b7315681e"
+    },
+    {
+      "path": "web/src/components/dashboard/analyticsFormat.ts",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "6f05a5131e203ce30a7f457c063ff1cd08d04d574a5427dadec49b6f34cd1e56"
+    },
+    {
+      "path": "web/src/types/analytics.ts",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "cab423837ccf045b26f095202e6ff50549b3d82039cc91bca8129f27129819d4"
+    },
+    {
+      "path": "web/src/views/DashboardView.vue",
+      "action": "write",
+      "base_sha256": "cef9ce773d0a9fd969ea1f4c52c243f29da1697d8ee93498cb3b3878c22a0f11",
+      "payload_sha256": "e2997f8654325e897caacf6cdddd6468e99aba19cf87adc99547aa89c9f39266"
+    },
+    {
+      "path": "web/vite.config.ts",
+      "action": "write",
+      "base_sha256": "93f1af5a62f6d1ba1a176031bf1bfe0d97932d56879458fa7b782ca57a925e9a",
+      "payload_sha256": "332b5e4afc7db4852ff5b67f86d046c6a1ba2f8173e048fc9765c441ed03e7b1"
+    }
+  ]
+}
