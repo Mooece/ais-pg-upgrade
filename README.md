@@ -17,7 +17,7 @@
 | `payload/` | 相对上游基线的升级文件，包含后端改动、前端源码/构建资源和配套测试 |
 | `patch-manifest.json` | 基线、文件校验、允许的旧版本内容和删除清单 |
 | `upgrade.py` | 安装前检查、备份、应用与回滚；使用 Python 标准库 |
-| `upgrade.sh` / `Upgrade-Windows.cmd` | 本地升级入口 |
+| `upgrade.sh` / `Upgrade-Windows.ps1` / `Upgrade-Windows.cmd` | 本地升级入口；Windows 入口先检查端口占用 |
 | `scripts/` / `tests/` | 补丁维护工具与安装器测试 |
 
 定制功能包括 OpenAI 兼容接口、回复缓存与缓存控制面板、调用统计、下游心跳、Google 上游 HTTP/2 PING，以及酒馆的 `模型名[防截断]` 选项。上游 PING 默认 25 秒，不会延长 Google 固定请求期限。防截断使用内部工具承载全文并校验后返回正文，不保证突破模型输出上限，也不自动续写。
@@ -57,21 +57,17 @@ git clone --single-branch --branch main https://github.com/Mooece/ais-pg-upgrade
 先在原服务窗口按 `Ctrl+C`，等待出现 `Application shutdown complete`。如果 CMD 询问是否终止批处理，选择 `Y`，再退出旧服务窗口。下面的升级命令在新的 PowerShell 窗口执行，路径替换成实际安装位置：
 
 ```powershell
-$project = 'D:\apps\aistudio-api'
-$addon = 'D:\apps\ais-pg-upgrade'
-Set-Location -LiteralPath $addon -ErrorAction Stop
-git pull --ff-only
+$project = 'D:\01Project\aistudio-api'
+$addon = 'D:\01Project\ais-pg-upgrade'
+git -C $addon pull --ff-only
 if ($LASTEXITCODE -ne 0) { throw '补丁仓库拉取失败' }
-$python = Join-Path $project '.venv\Scripts\python.exe'
-& $python -B .\upgrade.py check --project $project
-if ($LASTEXITCODE -ne 0) { throw '原项目或补丁检查失败' }
-& $python -B .\upgrade.py apply --project $project
-if ($LASTEXITCODE -ne 0) { throw '补丁应用失败，请查看备份信息' }
-Set-Location -LiteralPath $project
-.\start.bat
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$addon\Upgrade-Windows.ps1" -ProjectPath $project -Port 8080
+if ($LASTEXITCODE -ne 0) { throw '升级或启动失败，请查看上方错误信息' }
 ```
 
-也可执行 `Upgrade-Windows.cmd "D:\apps\aistudio-api"` 应用当前已拉取的补丁。此入口只应用文件，完成后仍需运行原项目的 `start.bat`。保留原有启动参数，启动后保持服务窗口打开，并检查原服务的 `/health` 与面板。
+`Upgrade-Windows.ps1` 在任何检查或应用前确认指定端口未被占用，再依次执行 `check`、`apply`，最后以前台方式运行原项目的 `start.bat`。默认端口为 8080；使用其他端口时将 `-Port` 改为原服务端口。端口被占用或任何步骤失败时会停止，脚本不会结束其他进程。服务启动后保持此窗口打开，正常运行期间升级命令不会返回提示符。
+
+需要只应用文件、稍后自行启动时，在上述 PowerShell 命令末尾添加 `-NoStart`。也可在 CMD 中执行 `Upgrade-Windows.cmd "D:\01Project\aistudio-api" 8080` 应用当前已拉取的补丁；CMD 使用同一套检查流程，只应用文件。完成后按原方式运行 `start.bat`，保留原有启动参数，并检查原服务的 `/health` 与面板。
 
 升级顺序为：**完整停止旧实例 → 应用补丁 → 启动一个新实例 → 打开页面**。运行中的 Python 进程不会因磁盘代码更新而自动重新加载。如果启动时出现 `WinError 10048` 或 8080 端口被占用，先核对原来的服务窗口，避免同时启动两个实例；不要批量结束其他 Python 程序。
 
@@ -114,7 +110,7 @@ Set-Location -LiteralPath $project
 python upgrade.py rollback --backup '工具打印的备份目录'
 ```
 
-将 `python` 换成原项目虚拟环境的解释器；Windows 使用上文 `$python`。回滚会核对目标和备份，恢复这次补丁修改的文件，然后按原方式启动。当前代码若在应用后又被修改，工具会拒绝覆盖。
+将 `python` 换成原项目虚拟环境的解释器；Windows 可用 `$python = Join-Path $project '.venv\Scripts\python.exe'` 取得路径，然后在补丁目录执行 `& $python -B .\upgrade.py rollback --backup '工具打印的备份目录'`。回滚会核对目标和备份，恢复这次补丁修改的文件，然后按原方式启动。当前代码若在应用后又被修改，工具会拒绝覆盖。
 
 之后只在**补丁仓库**执行 `git pull --ff-only`，再对原项目执行 `apply`。已应用的同版本文件会跳过；后续补丁可明确记录允许升级的旧内容。原项目上游版本更新与本补丁更新分别处理：先回滚补丁、按原项目流程升级，再使用支持该新基线的补丁。
 
