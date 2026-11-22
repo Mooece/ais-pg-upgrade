@@ -19,7 +19,7 @@ RUN chmod +x build.sh && ./build.sh
 
 # Stage 2: Runtime Python environment
 # Use Debian 12 (bookworm) explicitly so package names stay stable.
-FROM python:3.11-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
