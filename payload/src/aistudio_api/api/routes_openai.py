@@ -702,7 +702,7 @@ def gemini_response_to_openai(
     if tool_calls:
         message["tool_calls"] = tool_calls
     response_id = str(payload.get("responseId") or f"chatcmpl-{uuid.uuid4().hex}")
-    return {
+    result: dict[str, object] = {
         "id": response_id
         if response_id.startswith("chatcmpl-")
         else f"chatcmpl-{response_id}",
@@ -714,6 +714,9 @@ def gemini_response_to_openai(
         ],
         "usage": _openai_usage(payload.get("usageMetadata")),
     }
+    if base_model(model) != model:
+        result["aistudio_full_reply"] = payload["aistudio_full_reply"]
+    return result
 
 
 def _sse(payload: dict[str, object]) -> str:
@@ -731,14 +734,18 @@ def _chat_chunk(
     model: str,
     delta: dict[str, object],
     finish_reason: str | None = None,
+    full_reply: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    result: dict[str, object] = {
         "id": completion_id,
         "object": "chat.completion.chunk",
         "created": created,
         "model": model.removeprefix("models/"),
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
     }
+    if full_reply is not None:
+        result["aistudio_full_reply"] = full_reply
+    return result
 
 
 def _openai_stream_error(
@@ -790,6 +797,7 @@ async def _openai_stream_events(
         "total_tokens": 0,
     }
     has_tool_calls = False
+    full_reply: dict[str, object] | None = None
     capture = ReplyCapture() if cache_owner else None
     upstream_finished = False
     tool_indexes: dict[str, int] = {}
@@ -850,6 +858,8 @@ async def _openai_stream_events(
                     yield "data: [DONE]\n\n"
                     return
                 usage_meta = payload.get("usageMetadata")
+                if base_model(model) != model:
+                    full_reply = _as_dict(payload.get("aistudio_full_reply"))
                 if isinstance(usage_meta, dict):
                     final_usage = _openai_usage(usage_meta)
                 candidates = payload.get("candidates")
@@ -940,6 +950,7 @@ async def _openai_stream_events(
                             created=created,
                             model=model,
                             delta=delta,
+                            full_reply=full_reply,
                         )
                     )
     except asyncio.CancelledError:
@@ -977,6 +988,7 @@ async def _openai_stream_events(
                 model=model.removeprefix("models/"),
                 finish_reason=finish_reason,
                 usage=final_usage,
+                full_reply=full_reply,
             ),
         )
     yield _sse(
@@ -986,6 +998,7 @@ async def _openai_stream_events(
             model=model,
             delta={},
             finish_reason=finish_reason,
+            full_reply=full_reply,
         )
     )
     if include_usage:

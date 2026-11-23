@@ -47,6 +47,7 @@ class ReplyCapture:
         model: str,
         finish_reason: str,
         usage: dict[str, object],
+        full_reply: dict[str, object] | None = None,
     ) -> dict[str, object]:
         message: dict[str, object] = {
             "role": "assistant",
@@ -56,7 +57,7 @@ class ReplyCapture:
             message["tool_calls"] = [
                 self._tool_calls[i] for i in sorted(self._tool_calls)
             ]
-        return {
+        result: dict[str, object] = {
             "id": completion_id,
             "object": "chat.completion",
             "created": created,
@@ -66,6 +67,9 @@ class ReplyCapture:
             ],
             "usage": usage,
         }
+        if full_reply is not None:
+            result["aistudio_full_reply"] = full_reply
+        return result
 
 
 def replay_completion(completion: dict[str, object]) -> dict[str, object]:
@@ -139,6 +143,7 @@ async def replay_chunks(
             if isinstance(call, dict)
         ]
     if delta:
+        full_reply = completion.get("aistudio_full_reply")
         yield _sse(
             {
                 "id": response_id,
@@ -146,6 +151,11 @@ async def replay_chunks(
                 "created": created,
                 "model": model,
                 "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+                **(
+                    {"aistudio_full_reply": full_reply}
+                    if isinstance(full_reply, dict)
+                    else {}
+                ),
             }
         )
     finish = choice.get("finish_reason") if isinstance(raw_choice, dict) else "stop"

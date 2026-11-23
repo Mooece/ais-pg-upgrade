@@ -203,6 +203,252 @@ async def test_streaming_alias_waits_for_complete_envelope_and_returns_usage(
     assert handle.call_args.kwargs == {"stream": False, "require_finish_reason": True}
 
 
+def _alias_prose(response, *, stream):
+    if not stream:
+        payload = response.json()
+        return payload["choices"][0]["message"]["content"], [
+            payload["aistudio_full_reply"]
+        ]
+    events = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+    content_events = [
+        event
+        for event in events
+        if any(
+            choice.get("delta", {}).get("content")
+            for choice in event.get("choices", [])
+        )
+    ]
+    text = "".join(
+        choice["delta"].get("content", "")
+        for event in content_events
+        for choice in event["choices"]
+    )
+    assert response.text.count("data: [DONE]") == 1
+    return text, [event["aistudio_full_reply"] for event in content_events]
+
+
+def _alias_upstream(payload):
+    async def handle(*args, stream, **kwargs):
+        if not stream:
+            return payload
+
+        async def events():
+            yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+        return StreamingResponse(events())
+
+    return AsyncMock(side_effect=handle)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "envelope",
+        "mechanical_preface",
+        "before_and_after",
+        "shared_part",
+        "thoughts",
+        "plain_text",
+        "plain_parts",
+        "custom_plain_text",
+    ],
+)
+async def test_alias_preserves_visible_parts_and_reports_mode(
+    api, monkeypatch, case, stream
+):
+    answer = "  完整函数回答\n第二段  "
+    call = {
+        "functionCall": {"name": "aistudio_full_reply", "args": {"content": answer}}
+    }
+    preface = "调用函数 `aistudio_full_reply` 输出如下内容。"
+    cases = {
+        "envelope": ([call], answer),
+        "mechanical_preface": ([{"text": " \n" + preface + "\t"}, call], answer),
+        "before_and_after": (
+            [{"text": "Opening\n"}, call, {"text": "\nEnding"}],
+            "Opening\n" + answer + "\nEnding",
+        ),
+        "shared_part": ([{"text": "Opening\n", **call}], "Opening\n" + answer),
+        "thoughts": (
+            [
+                {"text": "private", "thought": True},
+                call,
+                {"text": "hidden", "thought": True},
+            ],
+            answer,
+        ),
+        "plain_text": ([{"text": "  普通正文\n第二段  "}], "  普通正文\n第二段  "),
+        "plain_parts": (
+            [{"text": "  第一段"}, {"text": "\n"}, {"text": "第二段  "}],
+            "  第一段\n第二段  ",
+        ),
+        "custom_plain_text": (
+            [{"text": "思考说明\n<!-- charThink: synthetic -->\n状态输出"}],
+            "思考说明\n<!-- charThink: synthetic -->\n状态输出",
+        ),
+    }
+    parts, expected = cases[case]
+    payload = full_reply()
+    payload["candidates"][0]["content"]["parts"] = parts
+
+    monkeypatch.setattr(
+        routes,
+        "handle_gemini_generate_content",
+        _alias_upstream(payload),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemini-4-argon[防截断]",
+                "messages": [{"role": "user", "content": "story"}],
+                "stream": stream,
+            },
+        )
+    assert response.status_code == 200
+    text, metadata = _alias_prose(response, stream=stream)
+    assert text == expected
+    mode = (
+        "plain_text_fallback"
+        if case in ("plain_text", "plain_parts", "custom_plain_text")
+        else "function_envelope"
+    )
+    assert metadata and all(item == {"mode": mode} for item in metadata)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("mode", ["function_envelope", "plain_text_fallback"])
+async def test_alias_mode_survives_cache_and_replay(api, monkeypatch, stream, mode):
+    from aistudio_api.api.reply_cache import get_reply_cache
+
+    payload = full_reply()
+    if mode == "plain_text_fallback":
+        payload["candidates"][0]["content"]["parts"] = [{"text": "完整回答\n第二段"}]
+    cache = get_reply_cache()
+    await cache.configure(1)
+    app.dependency_overrides[routes._reply_cache_owner] = lambda: "mode-owner"
+
+    handler = _alias_upstream(payload)
+    monkeypatch.setattr(routes, "handle_gemini_generate_content", handler)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            request = {
+                "model": "gemini-4-argon[防截断]",
+                "messages": [{"role": "user", "content": "story"}],
+            }
+            first = await client.post(
+                "/v1/chat/completions", json={**request, "stream": stream}
+            )
+            assert first.status_code == 200
+            assert _alias_prose(first, stream=stream) == (
+                "完整回答\n第二段",
+                [{"mode": mode}],
+            )
+            entry = (await cache.status())["entries"][0]
+            await cache.arm(entry["id"])
+            replay = await client.post(
+                "/v1/chat/completions", json={**request, "stream": not stream}
+            )
+        assert replay.headers["X-Aistudio-Reply-Cache"] == "replay"
+        assert _alias_prose(replay, stream=not stream) == (
+            "完整回答\n第二段",
+            [{"mode": mode}],
+        )
+        handler.assert_awaited_once()
+    finally:
+        app.dependency_overrides.pop(routes._reply_cache_owner, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "wrong_tool",
+        "invalid_args",
+        "multiple_tools",
+        "malformed_call",
+        "thought_call",
+        "inline_data",
+        "file_data",
+        "file_data_with_call",
+        "executable_code",
+        "code_execution_result",
+        "invalid_part",
+    ],
+)
+async def test_alias_rejects_invalid_envelopes_instead_of_plain_text_fallback(
+    api, monkeypatch, stream, failure
+):
+    function: dict[str, object] = {
+        "name": "aistudio_full_reply",
+        "args": {"content": "complete"},
+    }
+    call: dict[str, object] = {"functionCall": function}
+    parts = [{"text": "Visible text must not bypass the invalid envelope."}, call]
+    if failure == "wrong_tool":
+        function["name"] = "other"
+    elif failure == "invalid_args":
+        function["args"] = '{"content":"unfinished'
+    elif failure == "multiple_tools":
+        parts.append(call)
+    elif failure == "malformed_call":
+        call["functionCall"] = "invalid"
+    elif failure == "thought_call":
+        call["thought"] = True
+    elif failure == "inline_data":
+        parts = [{"text": "Visible text"}, {"inlineData": {}}]
+    elif failure in ("file_data", "file_data_with_call"):
+        parts = [
+            {"text": "Visible text"},
+            {"fileData": {"fileUri": "synthetic://file"}},
+        ]
+        if failure == "file_data_with_call":
+            parts.append(call)
+    elif failure == "executable_code":
+        parts.append({"executableCode": {"language": "PYTHON", "code": "pass"}})
+    elif failure == "code_execution_result":
+        parts = [
+            {"text": "Visible text"},
+            {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "synthetic"}},
+        ]
+    elif failure == "invalid_part":
+        parts.append("invalid")
+    payload = full_reply()
+    payload["candidates"][0]["content"]["parts"] = parts
+    monkeypatch.setattr(
+        routes, "handle_gemini_generate_content", _alias_upstream(payload)
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemini-4-argon[防截断]",
+                "messages": [{"role": "user", "content": "story"}],
+                "stream": stream,
+            },
+        )
+    assert '"error"' in response.text
+    assert '"aistudio_full_reply"' not in response.text
+    if stream:
+        assert '"finish_reason":"stop"' not in response.text
+    else:
+        assert '"choices"' not in response.text
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stream", [False, True])
 async def test_alias_rejects_missing_real_finish_in_generation_service(
@@ -252,6 +498,87 @@ async def test_alias_rejects_missing_real_finish_in_generation_service(
         assert '"content":"cut off"' not in response.text
     else:
         assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "empty_text",
+        "whitespace",
+        "unicode_whitespace",
+        "outside_text",
+        "inline_data",
+        "max_tokens",
+        "prohibited_content",
+        "multiple_tools",
+        "missing_tool",
+        "invalid_args",
+    ],
+)
+async def test_real_gateway_alias_accepts_visible_text_and_preserves_guards(
+    api, monkeypatch, case
+):
+    answer = "  第一段\r\n第二段\t "
+    extra_text = {
+        "empty_text": "",
+        "unicode_whitespace": "\u3000\r\n",
+        "outside_text": " extra answer ",
+    }.get(case, " \r\n\t")
+    args = '{"content":"unfinished' if case == "invalid_args" else {"content": answer}
+    call_part = [None, None, None, ["aistudio_full_reply", args]]
+    parts = [[True, "private reasoning"], [None, extra_text], call_part]
+    if case == "multiple_tools":
+        parts.append(call_part)
+    elif case == "missing_tool":
+        parts.pop()
+    elif case == "inline_data":
+        parts.append([None, None, ["audio/pcm", "AAA="]])
+    finish = {"max_tokens": 2, "prohibited_content": 8}.get(case, 1)
+    candidate = [[parts, "model"], finish]
+    wire = ")]}'\n" + json.dumps([[[[candidate], None, [3, 7, 10]]]])
+
+    class UpstreamSession:
+        active_context = None
+
+        async def send_request(self, **kwargs):
+            return 200, wire.encode()
+
+    # Skip session construction so the real client parses only synthetic wire data.
+    gateway_client = AIStudioClient.__new__(AIStudioClient)
+    gateway_client._session = cast(GatewaySession, UpstreamSession())
+    prepared = PreparedRequest(url="https://example.test", headers={}, body="[]")
+    gateway_client.prepare_request = AsyncMock(return_value=prepared)
+    app.dependency_overrides[get_client] = lambda: gateway_client
+    monkeypatch.setattr(
+        api_service_gemini, "ensure_active_account", AsyncMock(return_value=None)
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gemini-4-argon[防截断]",
+                "messages": [{"role": "user", "content": "story"}],
+                "stream": False,
+            },
+        )
+    assert prepared.require_finish_reason is True
+    if case in ("empty_text", "whitespace", "unicode_whitespace", "outside_text"):
+        assert response.status_code == 200
+        assert response.json()["choices"][0] == {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": extra_text + answer if case == "outside_text" else answer,
+            },
+            "finish_reason": "stop",
+        }
+    else:
+        assert response.status_code == 502
+        assert response.json()["error"]["type"] == "upstream_response_error"
+        assert '"choices"' not in response.text
 
 
 @pytest.mark.asyncio
@@ -306,10 +633,13 @@ async def test_model_list_adds_only_supported_text_aliases_once(api, monkeypatch
         "truncated_json",
         "max_tokens",
         "safety",
+        "prohibited_content",
+        "inline_data",
         "wrong_tool",
         "invalid_args",
         "multiple_tools",
-        "plain_text",
+        "empty_text",
+        "thought_only",
         "non_string",
     ],
 )
@@ -335,6 +665,12 @@ async def test_unfinished_or_invalid_alias_never_returns_success_or_caches(
         candidate["finishReason"] = "MAX_TOKENS"
     elif failure == "safety":
         candidate["finishReason"] = "SAFETY"
+    elif failure == "prohibited_content":
+        candidate["finishReason"] = "PROHIBITED_CONTENT"
+    elif failure == "inline_data":
+        candidate["content"]["parts"].append(
+            {"inlineData": {"mimeType": "image/png", "data": "AA=="}}
+        )
     elif failure == "wrong_tool":
         candidate["content"]["parts"][1]["functionCall"]["name"] = "other"
     elif failure == "invalid_args":
@@ -343,8 +679,10 @@ async def test_unfinished_or_invalid_alias_never_returns_success_or_caches(
         )
     elif failure == "multiple_tools":
         candidate["content"]["parts"].append(candidate["content"]["parts"][1])
-    elif failure == "plain_text":
-        candidate["content"]["parts"] = [{"text": "ordinary prose"}]
+    elif failure == "empty_text":
+        candidate["content"]["parts"] = [{"text": " \n\t"}]
+    elif failure == "thought_only":
+        candidate["content"]["parts"] = [{"text": "private", "thought": True}]
     elif failure == "non_string":
         candidate["content"]["parts"][1]["functionCall"]["args"] = {"content": 7}
 

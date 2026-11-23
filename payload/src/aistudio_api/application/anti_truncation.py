@@ -19,6 +19,7 @@ from aistudio_api.api.schemas import (
 
 ALIAS_SUFFIX = "[防截断]"
 TOOL_NAME = "aistudio_full_reply"
+_ENVELOPE_PREFACE = "调用函数 `aistudio_full_reply` 输出如下内容。"
 
 
 def base_model(model: str) -> str:
@@ -161,26 +162,70 @@ def unwrap_response(payload: dict[str, object]) -> dict[str, object]:
     parts = content.get("parts") if isinstance(content, dict) else None
     if not isinstance(parts, list):
         raise _invalid_reply("missing function envelope")
+    visible_parts: list[dict[str, object]] = []
     calls: list[dict[str, object]] = []
     for part in parts:
-        if not isinstance(part, dict) or part.get("thought") is True:
+        if not isinstance(part, dict):
+            raise _invalid_reply("invalid response part")
+        if part.get("thought") is True:
+            if "functionCall" in part:
+                raise _invalid_reply("function call in thought content")
             continue
+        visible_parts.append(part)
         call = part.get("functionCall")
-        if part.get("text") or part.get("inlineData"):
-            raise _invalid_reply("answer outside function envelope")
-        if isinstance(call, dict):
+        text = part.get("text")
+        if text is not None and not isinstance(text, str):
+            raise _invalid_reply("visible text must be a string")
+        if any(
+            part.get(field) is not None
+            for field in (
+                "inlineData",
+                "fileData",
+                "functionResponse",
+                "executableCode",
+                "codeExecutionResult",
+            )
+        ):
+            raise _invalid_reply("unsupported content outside function envelope")
+        if "functionCall" in part:
+            if not isinstance(call, dict):
+                raise _invalid_reply("invalid function call")
             calls.append(call)
-    if len(calls) != 1 or calls[0].get("name") != TOOL_NAME:
-        raise _invalid_reply("expected exactly one aistudio_full_reply call")
-    args = calls[0].get("args")
-    if not isinstance(args, dict) or not isinstance(args.get("content"), str):
-        raise _invalid_reply("content must be a string in a complete argument object")
+    if calls:
+        if len(calls) != 1 or calls[0].get("name") != TOOL_NAME:
+            raise _invalid_reply("expected exactly one aistudio_full_reply call")
+        args = calls[0].get("args")
+        function_content = args.get("content") if isinstance(args, dict) else None
+        if not isinstance(function_content, str):
+            raise _invalid_reply(
+                "content must be a string in a complete argument object"
+            )
+        fragments: list[str] = []
+        for part in visible_parts:
+            text = part.get("text")
+            if isinstance(text, str) and text.strip() not in ("", _ENVELOPE_PREFACE):
+                fragments.append(text)
+            if "functionCall" in part:
+                fragments.append(function_content)
+        answer = "".join(fragments)
+        mode = "function_envelope"
+    else:
+        plain_fragments: list[str] = []
+        for part in visible_parts:
+            text = part.get("text")
+            if isinstance(text, str):
+                plain_fragments.append(text)
+        answer = "".join(plain_fragments)
+        if not answer.strip():
+            raise _invalid_reply("missing function envelope or nonempty plain text")
+        mode = "plain_text_fallback"
     return {
         **payload,
+        "aistudio_full_reply": {"mode": mode},
         "candidates": [
             {
                 **candidate,
-                "content": {"role": "model", "parts": [{"text": args["content"]}]},
+                "content": {"role": "model", "parts": [{"text": answer}]},
             }
         ],
     }
