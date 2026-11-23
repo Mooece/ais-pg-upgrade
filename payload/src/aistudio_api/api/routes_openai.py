@@ -51,8 +51,10 @@ from aistudio_api.api.schemas import (
 from aistudio_api.api.state import RuntimeState
 from aistudio_api.application.anti_truncation import (
     ALIAS_SUFFIX,
+    FullReplyToolPolicy,
     base_model,
     supports_full_reply,
+    tool_policy,
     unwrap_response,
     unwrap_stream,
     validate_selection,
@@ -173,8 +175,27 @@ def _reply_cache_owner(request: Request) -> str | None:
     return None
 
 
+def _completion_has_tool_calls(completion: dict[str, object]) -> bool:
+    choices = completion.get("choices")
+    return isinstance(choices, list) and any(
+        isinstance(choice, dict)
+        and (
+            choice.get("finish_reason") == "tool_calls"
+            or bool(_as_dict(choice.get("message")).get("tool_calls"))
+        )
+        for choice in choices
+    )
+
+
 async def _save_reply(owner: str, completion: dict[str, object] | None) -> None:
     if completion is None:
+        return
+    model = completion.get("model")
+    if (
+        isinstance(model, str)
+        and base_model(model) != model
+        and _completion_has_tool_calls(completion)
+    ):
         return
     try:
         await get_reply_cache().save(owner, completion)
@@ -200,7 +221,9 @@ def _encode_tool_call_id(call_id: str, signature: object) -> str:
     return f"{call_id}{_CALL_SIGNATURE_MARKER}{encoded.rstrip('=')}"
 
 
-def _decode_tool_call_id(call_id: str) -> tuple[str, str | None]:
+def _decode_tool_call_id(
+    call_id: str, *, use_cached_signature: bool = True
+) -> tuple[str, str | None]:
     if _CALL_SIGNATURE_MARKER in call_id:
         original, encoded = call_id.rsplit(_CALL_SIGNATURE_MARKER, 1)
         if original and encoded:
@@ -211,7 +234,7 @@ def _decode_tool_call_id(call_id: str) -> tuple[str, str | None]:
                 pass
             else:
                 return original, signature
-    return call_id, _TOOL_CALL_SIGNATURES.get(call_id)
+    return call_id, _TOOL_CALL_SIGNATURES.get(call_id) if use_cached_signature else None
 
 
 def _explicit_tool_signature(*sources: dict[str, object]) -> str | None:
@@ -355,7 +378,7 @@ def _tool_config(
     allowed_names: list[str] = []
     if isinstance(choice, str):
         mode = {"none": "NONE", "auto": "AUTO", "required": "ANY"}.get(choice, "")
-    elif isinstance(choice, dict) and choice.get("type") == "function":
+    elif choice.get("type") == "function":
         function = choice.get("function")
         name = function.get("name") if isinstance(function, dict) else None
         if not isinstance(name, str) or not name:
@@ -376,7 +399,7 @@ def _tool_config(
         str(declaration.get("name"))
         for tool in tools or []
         for declaration in tool.functionDeclarations or []
-        if isinstance(declaration, dict) and declaration.get("name")
+        if declaration.get("name")
     }
     if allowed_names and allowed_names[0] not in declared_names:
         raise _invalid_request("tool_choice names a function that was not declared")
@@ -417,6 +440,7 @@ def openai_request_to_gemini(
     system_text: list[str] = []
     contents: list[GeminiContent] = []
     function_names: dict[str, str] = {}
+    full_reply = base_model(request.model) != request.model
     for message in request.messages:
         role = message.get("role")
         if not isinstance(role, str):
@@ -431,9 +455,27 @@ def openai_request_to_gemini(
         if role in ("tool", "function"):
             call_id = message.get("tool_call_id")
             name = message.get("name")
+            if full_reply and (
+                not isinstance(call_id, str) or call_id not in function_names
+            ):
+                raise _invalid_request(
+                    "Tool results require a matching assistant tool_call_id"
+                )
+            if (
+                full_reply
+                and name is not None
+                and isinstance(call_id, str)
+                and name != function_names.get(call_id)
+            ):
+                raise _invalid_request(
+                    "Tool result name does not match its tool_call_id"
+                )
             decoded_call_id: str | None = call_id if isinstance(call_id, str) else None
             if isinstance(call_id, str):
-                decoded_call_id, _ = _decode_tool_call_id(call_id)
+                decoded_call_id, _ = _decode_tool_call_id(
+                    call_id,
+                    use_cached_signature=base_model(request.model) == request.model,
+                )
                 name = function_names.get(
                     call_id, function_names.get(decoded_call_id, name)
                 )
@@ -480,9 +522,30 @@ def openai_request_to_gemini(
                 call_id = raw_call.get("id")
                 if not isinstance(name, str) or not name:
                     raise _invalid_request("Each tool_call requires function.name")
+                if full_reply and (not isinstance(call_id, str) or not call_id.strip()):
+                    raise _invalid_request(
+                        "Full-reply tool history requires a nonempty call ID"
+                    )
                 if not isinstance(call_id, str) or not call_id:
                     call_id = f"call_{uuid.uuid4().hex[:20]}"
-                raw_call_id, signature = _decode_tool_call_id(call_id)
+                arguments = _function_args(function.get("arguments"))
+                if full_reply:
+                    if function.get("arguments") is None or not isinstance(
+                        arguments, dict
+                    ):
+                        raise _invalid_request(
+                            "Full-reply tool history requires complete argument objects"
+                        )
+                    try:
+                        json.dumps(arguments, allow_nan=False)
+                    except (TypeError, ValueError) as exc:
+                        raise _invalid_request(
+                            "Full-reply tool history arguments must contain valid JSON"
+                        ) from exc
+                raw_call_id, signature = _decode_tool_call_id(
+                    call_id,
+                    use_cached_signature=base_model(request.model) == request.model,
+                )
                 signature = _explicit_tool_signature(raw_call, function) or signature
                 if signature is None:
                     # OpenAI clients may discard provider metadata from synthetic or
@@ -490,11 +553,13 @@ def openai_request_to_gemini(
                     # without a provider-issued signature; use it only as a fallback.
                     signature = _SKIP_THOUGHT_SIGNATURE_VALIDATOR
                 function_names[call_id] = name
+                if full_reply:
+                    function_names[raw_call_id] = name
                 parts.append(
                     GeminiPart(
                         functionCall=GeminiFunctionCall(
                             name=name,
-                            args=_function_args(function.get("arguments")),
+                            args=arguments,
                             id=raw_call_id,
                         ),
                         thoughtSignature=signature,
@@ -574,7 +639,11 @@ def openai_request_to_gemini(
             else None
         ),
         tools=gemini_tools,
-        toolConfig=_tool_config(request.tool_choice, gemini_tools),
+        toolConfig=(
+            _tool_config(request.tool_choice, gemini_tools)
+            if base_model(request.model) == request.model
+            else None
+        ),
         generationConfig=generation_config,
         reasoningEffort=request.reasoning_effort,
     )
@@ -639,10 +708,11 @@ def gemini_response_to_openai(
     response: GeminiGenerateContentResponse | dict[str, object],
     *,
     model: str,
+    full_reply_policy: FullReplyToolPolicy | None = None,
 ) -> dict[str, object]:
     payload = _as_dict(response)
     if base_model(model) != model:
-        payload = unwrap_response(payload)
+        payload = unwrap_response(payload, full_reply_policy)
     candidates = payload.get("candidates")
     candidate = (
         _as_dict(candidates[0]) if isinstance(candidates, list) and candidates else {}
@@ -666,7 +736,8 @@ def gemini_response_to_openai(
                 function_call.get("id") or f"call_{uuid.uuid4().hex[:20]}"
             )
             signature = part.get("thoughtSignature")
-            _remember_tool_signature(raw_call_id, signature)
+            if base_model(model) == model:
+                _remember_tool_signature(raw_call_id, signature)
             call_id = _encode_tool_call_id(raw_call_id, signature)
             args = function_call.get("args")
             tool_calls.append(
@@ -761,8 +832,14 @@ async def _openai_stream(
     *,
     model: str,
     include_usage: bool,
+    full_reply_policy: FullReplyToolPolicy | None = None,
 ) -> AsyncGenerator[str, None]:
-    events = _openai_stream_events(response, model=model, include_usage=include_usage)
+    events = _openai_stream_events(
+        response,
+        model=model,
+        include_usage=include_usage,
+        full_reply_policy=full_reply_policy,
+    )
     kept_events = _with_keepalive(events, ": keepalive\n\n")
     try:
         async for chunk in kept_events:
@@ -778,6 +855,7 @@ async def _openai_stream_events(
     model: str,
     include_usage: bool,
     cache_owner: str | None = None,
+    full_reply_policy: FullReplyToolPolicy | None = None,
 ) -> AsyncGenerator[str, None]:
     log_request_event("openai_stream_started")
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -806,7 +884,11 @@ async def _openai_stream_events(
     next_tool_index = 0
     sse_buffer = ""
     iterator = response.body_iterator
-    chunks = unwrap_stream(iterator) if base_model(model) != model else iterator
+    chunks = (
+        unwrap_stream(iterator, full_reply_policy)
+        if base_model(model) != model
+        else iterator
+    )
     try:
         async for raw_chunk in chunks:
             chunk_text = (
@@ -891,9 +973,10 @@ async def _openai_stream_events(
                         raw_call_id = str(
                             function_call.get("id") or f"stream:{function_name}"
                         )
-                        _remember_tool_signature(
-                            raw_call_id, part.get("thoughtSignature")
-                        )
+                        if base_model(model) == model:
+                            _remember_tool_signature(
+                                raw_call_id, part.get("thoughtSignature")
+                            )
                         if raw_call_id not in tool_indexes:
                             tool_indexes[raw_call_id] = next_tool_index
                             original_call_id = (
@@ -1045,6 +1128,7 @@ async def _buffered_openai_response(
     response: StreamingResponse,
     *,
     model: str,
+    full_reply_policy: FullReplyToolPolicy | None = None,
 ) -> JSONResponse:
     buffer = bytearray()
     iterator = response.body_iterator
@@ -1078,7 +1162,11 @@ async def _buffered_openai_response(
             status_code=status_code,
             content=_openai_stream_error(message, error_type, code=status_code),
         )
-    return JSONResponse(content=gemini_response_to_openai(payload, model=model))
+    return JSONResponse(
+        content=gemini_response_to_openai(
+            payload, model=model, full_reply_policy=full_reply_policy
+        )
+    )
 
 
 async def _complete_openai_response(
@@ -1088,6 +1176,9 @@ async def _complete_openai_response(
     *,
     cache_owner: str | None = None,
 ) -> JSONResponse:
+    policy = (
+        tool_policy(request) if base_model(request.model) != request.model else None
+    )
     result = await handle_gemini_generate_content(
         base_model(request.model),
         gemini_request,
@@ -1100,10 +1191,14 @@ async def _complete_openai_response(
         ),
     )
     if isinstance(result, StreamingResponse):
-        response = await _buffered_openai_response(result, model=request.model)
+        response = await _buffered_openai_response(
+            result, model=request.model, full_reply_policy=policy
+        )
     else:
         response = JSONResponse(
-            content=gemini_response_to_openai(result, model=request.model)
+            content=gemini_response_to_openai(
+                result, model=request.model, full_reply_policy=policy
+            )
         )
     if cache_owner and response.status_code == 200:
         await _save_reply(cache_owner, json.loads(bytes(response.body)))
@@ -1247,7 +1342,7 @@ async def create_chat_completion(
         validate_selection(request)
         gemini_request = openai_request_to_gemini(request)
         if base_model(request.model) != request.model:
-            gemini_request = wrap_request(gemini_request)
+            gemini_request = wrap_request(gemini_request, tool_policy(request))
     except HTTPException:
         raise
     except (TypeError, ValueError) as exc:
@@ -1257,10 +1352,29 @@ async def create_chat_completion(
         "OpenAI 兼容请求: model=%s, messages=%d", request.model, len(request.messages)
     )
     owner = cache_owner if isinstance(cache_owner, str) else None
+    if base_model(request.model) != request.model and (
+        request.tools
+        or request.tool_choice is not None
+        or any(
+            message.get("tool_calls")
+            or message.get("function_call")
+            or str(message.get("role", "")).lower() in ("tool", "function")
+            for message in request.messages
+        )
+    ):
+        # A cached answer must not replace a tool decision or replay an action.
+        # Keep the armed entry available for a later ordinary prose request.
+        owner = None
     if owner:
         try:
             cached = await get_reply_cache().take(owner)
-            if cached is not None:
+            if cached is not None and (
+                base_model(request.model) == request.model
+                or (
+                    cached.get("model") == request.model.removeprefix("models/")
+                    and not _completion_has_tool_calls(cached)
+                )
+            ):
                 log_request_event("reply_cache_replayed")
                 completion = replay_completion(cached)
                 if request.stream:

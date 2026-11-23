@@ -8,12 +8,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from aistudio_api.api import routes_openai as routes
 from aistudio_api.api.app import app
 from aistudio_api.api.dependencies import get_client
+from aistudio_api.api.schemas import (
+    GeminiGenerateContentRequest,
+    GeminiTool,
+    OpenAIChatCompletionRequest,
+)
 from aistudio_api.application import api_service_gemini
+from aistudio_api.application.anti_truncation import (
+    FullReplyToolPolicy,
+    tool_policy,
+    unwrap_response,
+    unwrap_stream,
+    validate_selection,
+    wrap_request,
+)
 from aistudio_api.config import settings
 from aistudio_api.domain.models import Candidate, ModelOutput
 from aistudio_api.infrastructure.gateway.client import AIStudioClient, PreparedRequest
@@ -55,6 +69,299 @@ def full_reply(*, reason="STOP", args=None, name="aistudio_full_reply"):
             "totalTokenCount": 10,
         },
     }
+
+
+def _client_tool_request(
+    choice=None, *, names=("lookup", "calculate"), messages=None, **kwargs
+):
+    return OpenAIChatCompletionRequest(
+        model="gemini-4a[防截断]",
+        messages=messages or [{"role": "user", "content": "synthetic tool request"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {"name": name, "parameters": {"type": "object"}},
+            }
+            for name in names
+        ],
+        tool_choice=choice,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "choice,allowed,allow_final",
+    [
+        (None, ("lookup", "calculate"), True),
+        ("auto", ("lookup", "calculate"), True),
+        ("none", (), True),
+        ("required", ("lookup", "calculate"), False),
+        (
+            {"type": "function", "function": {"name": "calculate"}},
+            ("calculate",),
+            False,
+        ),
+    ],
+)
+def test_full_reply_tool_policy_preserves_choice_semantics(
+    choice, allowed, allow_final
+):
+    request = _client_tool_request(choice)
+    validate_selection(request)
+    policy = tool_policy(request)
+    assert policy == FullReplyToolPolicy(("lookup", "calculate"), allowed, allow_final)
+    gemini = GeminiGenerateContentRequest(
+        contents=[],
+        tools=[
+            GeminiTool(functionDeclarations=[tool["function"]])
+            for tool in request.tools
+        ],
+    )
+    original = gemini.model_dump()
+    wrapped = wrap_request(gemini, policy)
+    assert gemini.model_dump() == original
+    assert [d["name"] for tool in wrapped.tools for d in tool.functionDeclarations] == [
+        "lookup",
+        "calculate",
+        "aistudio_full_reply",
+    ]
+    assert wrapped.toolConfig == {
+        "functionCallingConfig": {
+            "mode": "ANY",
+            "allowedFunctionNames": [
+                *allowed,
+                *(["aistudio_full_reply"] if allow_final else []),
+            ],
+        }
+    }
+
+
+@pytest.mark.parametrize("choice", [None, "none", "auto"])
+def test_full_reply_policy_without_client_tools_allows_only_envelope(choice):
+    request = _client_tool_request(choice, names=())
+    policy = tool_policy(request)
+    assert policy == FullReplyToolPolicy()
+    wrapped = wrap_request(GeminiGenerateContentRequest(contents=[]), policy)
+    assert wrapped.toolConfig["functionCallingConfig"]["allowedFunctionNames"] == [
+        "aistudio_full_reply"
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"names": ("same", "same")},
+        {"names": ("",)},
+        {"names": (" spaced ",)},
+        {"choice": "required", "names": ()},
+        {"choice": "unsupported"},
+        {"choice": {"type": "function", "function": {"name": "unknown"}}},
+        {"parallel_tool_calls": True},
+        {"messages": [{"role": "assistant", "function_call": {"name": "lookup"}}]},
+        {"messages": [{"role": "function", "name": "lookup", "content": "result"}]},
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"function": {"name": "lookup"}},
+                        {"function": {"name": "calculate"}},
+                    ],
+                }
+            ]
+        },
+    ],
+)
+def test_full_reply_policy_rejects_conflicting_or_ambiguous_tools(kwargs):
+    with pytest.raises(HTTPException) as error:
+        validate_selection(_client_tool_request(**kwargs))
+    assert error.value.status_code == 400
+
+
+def test_full_reply_policy_keeps_history_functions_independent_of_current_tools():
+    request = _client_tool_request(
+        messages=[
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"function": {"name": "prior_function"}, "id": "prior-call"}
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "prior-call",
+                "content": "synthetic prior result",
+            },
+        ]
+    )
+    assert tool_policy(request).client_names == ("lookup", "calculate")
+
+
+def test_full_reply_envelope_name_avoids_client_declarations_and_history():
+    request = _client_tool_request(
+        names=("aistudio_full_reply", "aistudio_full_reply_1"),
+        messages=[
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"function": {"name": "aistudio_full_reply_2"}, "id": "prior-call"}
+                ],
+            },
+            {"role": "tool", "name": "aistudio_full_reply_3", "content": "synthetic"},
+        ],
+    )
+    policy = tool_policy(request)
+    assert policy.envelope_name == "aistudio_full_reply_4"
+    gemini = GeminiGenerateContentRequest(
+        contents=[],
+        tools=[
+            GeminiTool(functionDeclarations=[tool["function"]])
+            for tool in request.tools
+        ],
+    )
+    wrapped = wrap_request(gemini, policy)
+    assert [d["name"] for tool in wrapped.tools for d in tool.functionDeclarations] == [
+        "aistudio_full_reply",
+        "aistudio_full_reply_1",
+        "aistudio_full_reply_4",
+    ]
+    assert (
+        "call aistudio_full_reply_4 exactly once"
+        in wrapped.systemInstruction.parts[-1].text
+    )
+    external = full_reply(name="aistudio_full_reply", args={"synthetic": True})
+    assert unwrap_response(external, policy)["aistudio_full_reply"] == {
+        "mode": "client_tool_call"
+    }
+    final = full_reply(
+        name="aistudio_full_reply_4", args={"content": "complete synthetic answer"}
+    )
+    final["candidates"][0]["content"]["parts"].insert(
+        1, {"text": "调用函数 `aistudio_full_reply_4` 输出如下内容。"}
+    )
+    result = unwrap_response(final, policy)
+    assert result["aistudio_full_reply"] == {"mode": "function_envelope"}
+    assert result["candidates"][0]["content"]["parts"] == [
+        {"text": "complete synthetic answer"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [None, "auto", "required", {"type": "function", "function": {"name": "lookup"}}],
+)
+def test_full_reply_unwrap_keeps_complete_allowed_client_call_and_signature(choice):
+    payload = full_reply(
+        name="lookup",
+        args={"query": "synthetic", "nested": {"values": [1, True, None]}},
+    )
+    call_part = payload["candidates"][0]["content"]["parts"][1]
+    call_part["thoughtSignature"] = "synthetic-opaque-signature"
+    call_part["functionCall"]["id"] = "synthetic-call-id"
+    result = unwrap_response(payload, tool_policy(_client_tool_request(choice)))
+    assert result["aistudio_full_reply"] == {"mode": "client_tool_call"}
+    assert result["candidates"] == payload["candidates"]
+    assert result["candidates"][0]["content"]["parts"][1] == call_part
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "unknown",
+        "none",
+        "wrong_named",
+        "mixed",
+        "multiple",
+        "missing_args",
+        "string_args",
+        "list_args",
+        "nonfinite_args",
+        "invalid_id",
+        "empty_id",
+        "invalid_signature",
+        "nonstop",
+        "missing_finish",
+        "thought_call",
+    ],
+)
+def test_full_reply_unwrap_rejects_invalid_client_tool_turn(case):
+    payload = full_reply(name="lookup", args={"query": "synthetic"})
+    policy = tool_policy(_client_tool_request())
+    candidate = payload["candidates"][0]
+    part = candidate["content"]["parts"][1]
+    if case == "unknown":
+        part["functionCall"]["name"] = "unknown"
+    elif case == "none":
+        policy = tool_policy(_client_tool_request("none"))
+    elif case == "wrong_named":
+        policy = tool_policy(
+            _client_tool_request(
+                {"type": "function", "function": {"name": "calculate"}}
+            )
+        )
+    elif case in ("mixed", "multiple"):
+        candidate["content"]["parts"].append(
+            {
+                "functionCall": {
+                    "name": "aistudio_full_reply" if case == "mixed" else "calculate",
+                    "args": {"content": "synthetic"},
+                }
+            }
+        )
+    elif case == "missing_args":
+        part["functionCall"].pop("args")
+    elif case in ("string_args", "list_args", "nonfinite_args"):
+        part["functionCall"]["args"] = {
+            "string_args": '{"query":"unfinished',
+            "list_args": [],
+            "nonfinite_args": {"value": float("nan")},
+        }[case]
+    elif case in ("invalid_id", "empty_id"):
+        part["functionCall"]["id"] = 12 if case == "invalid_id" else ""
+    elif case == "invalid_signature":
+        part["thoughtSignature"] = 12
+    elif case == "nonstop":
+        candidate["finishReason"] = "MAX_TOKENS"
+    elif case == "missing_finish":
+        candidate.pop("finishReason")
+    elif case == "thought_call":
+        part["thought"] = True
+    with pytest.raises(HTTPException) as error:
+        unwrap_response(payload, policy)
+    assert error.value.status_code == 502
+
+
+@pytest.mark.parametrize(
+    "choice", ["required", {"type": "function", "function": {"name": "lookup"}}]
+)
+@pytest.mark.parametrize("plain", [False, True])
+def test_full_reply_required_choice_cannot_be_satisfied_by_final_answer(choice, plain):
+    payload = full_reply()
+    if plain:
+        payload["candidates"][0]["content"]["parts"] = [
+            {"text": "synthetic final answer"}
+        ]
+    with pytest.raises(HTTPException, match="requires a client function call"):
+        unwrap_response(payload, tool_policy(_client_tool_request(choice)))
+
+
+@pytest.mark.asyncio
+async def test_full_reply_buffered_stream_preserves_client_call_after_complete_validation():
+    payload = full_reply(name="lookup", args={"query": "synthetic"})
+
+    async def chunks():
+        encoded = ("data: " + json.dumps(payload) + "\n\n").encode()
+        for offset in range(0, len(encoded), 7):
+            yield encoded[offset : offset + 7]
+
+    events = [
+        event
+        async for event in unwrap_stream(chunks(), tool_policy(_client_tool_request()))
+    ]
+    assert len(events) == 1
+    result = json.loads(events[0][6:])
+    assert result["aistudio_full_reply"] == {"mode": "client_tool_call"}
+    assert result["candidates"] == payload["candidates"]
 
 
 @pytest.mark.asyncio
@@ -802,8 +1109,13 @@ async def test_real_gateway_preserves_completion_evidence_for_alias(
 @pytest.mark.parametrize(
     "conflict",
     [
-        {"tools": [{"type": "function", "function": {"name": "own"}}]},
-        {"tool_choice": "none"},
+        {
+            "tools": [
+                {"type": "function", "function": {"name": "same"}},
+                {"type": "function", "function": {"name": "same"}},
+            ]
+        },
+        {"tool_choice": "required"},
         {"function_call": "auto"},
         {"functions": [{"name": "legacy"}]},
         {"response_format": {"type": "json_object"}},

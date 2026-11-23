@@ -6,6 +6,7 @@ import codecs
 import json
 import re
 from collections.abc import AsyncGenerator, AsyncIterable
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 
@@ -19,7 +20,90 @@ from aistudio_api.api.schemas import (
 
 ALIAS_SUFFIX = "[防截断]"
 TOOL_NAME = "aistudio_full_reply"
-_ENVELOPE_PREFACE = "调用函数 `aistudio_full_reply` 输出如下内容。"
+
+
+@dataclass(frozen=True)
+class FullReplyToolPolicy:
+    """Client functions permitted during this one complete generation."""
+
+    client_names: tuple[str, ...] = ()
+    allowed_client_names: tuple[str, ...] = ()
+    allow_final: bool = True
+    envelope_name: str = TOOL_NAME
+
+
+def _invalid_selection(message: str) -> HTTPException:
+    return HTTPException(
+        400, detail={"message": message, "type": "invalid_request_error"}
+    )
+
+
+def tool_policy(request: OpenAIChatCompletionRequest) -> FullReplyToolPolicy:
+    if request.parallel_tool_calls is True:
+        raise _invalid_selection("Full-reply mode supports serial function tools only")
+    history_names: set[str] = set()
+    for message in request.messages:
+        role = message.get("role")
+        if (isinstance(role, str) and role.lower() == "function") or message.get(
+            "function_call"
+        ) is not None:
+            raise _invalid_selection(
+                "Full-reply mode requires modern tool_calls/tool messages"
+            )
+        name = message.get("name")
+        if isinstance(name, str):
+            history_names.add(name)
+        calls = message.get("tool_calls")
+        if isinstance(calls, list):
+            if len(calls) > 1:
+                raise _invalid_selection(
+                    "Full-reply mode supports serial tool history only"
+                )
+            for call in calls:
+                function = call.get("function") if isinstance(call, dict) else None
+                name = function.get("name") if isinstance(function, dict) else None
+                if isinstance(name, str):
+                    history_names.add(name)
+    names: list[str] = []
+    for tool in request.tools or []:
+        function = tool.get("function")
+        if tool.get("type") != "function" or not isinstance(function, dict):
+            raise _invalid_selection("Full-reply mode supports function tools only")
+        name = function.get("name")
+        if not isinstance(name, str) or not name or name.strip() != name:
+            raise _invalid_selection(
+                "Each function tool requires a nonempty function.name"
+            )
+        if name in names:
+            raise _invalid_selection("Duplicate function tool names are not supported")
+        names.append(name)
+    declared = tuple(names)
+    taken_names = history_names | set(names)
+    envelope_name = TOOL_NAME
+    suffix = 0
+    while envelope_name in taken_names:
+        suffix += 1
+        envelope_name = f"{TOOL_NAME}_{suffix}"
+    choice = request.tool_choice
+    if choice is None or choice == "auto":
+        return FullReplyToolPolicy(declared, declared, True, envelope_name)
+    if choice == "none":
+        return FullReplyToolPolicy(declared, (), True, envelope_name)
+    if choice == "required":
+        if not declared:
+            raise _invalid_selection(
+                "tool_choice requires at least one declared function tool"
+            )
+        return FullReplyToolPolicy(declared, declared, False, envelope_name)
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        function = choice.get("function")
+        name = function.get("name") if isinstance(function, dict) else None
+        if not isinstance(name, str) or name not in declared:
+            raise _invalid_selection(
+                "tool_choice names a function that was not declared"
+            )
+        return FullReplyToolPolicy(declared, (name,), False, envelope_name)
+    raise _invalid_selection("tool_choice must be auto, none, required, or a function")
 
 
 def base_model(model: str) -> str:
@@ -83,29 +167,35 @@ def validate_selection(request: OpenAIChatCompletionRequest) -> None:
             },
         )
     if (
-        request.tools
-        or request.tool_choice is not None
-        or request.functions
+        request.functions
         or request.function_call is not None
         or request.response_format not in (None, {"type": "text"})
     ):
         raise HTTPException(
             400,
             detail={
-                "message": "Full-reply mode cannot be combined with client tools, tool_choice or structured response_format",
+                "message": "Full-reply mode cannot be combined with legacy functions/function_call or structured response_format",
                 "type": "invalid_request_error",
             },
         )
+    tool_policy(request)
 
 
-def wrap_request(request: GeminiGenerateContentRequest) -> GeminiGenerateContentRequest:
+def wrap_request(
+    request: GeminiGenerateContentRequest,
+    policy: FullReplyToolPolicy | None = None,
+) -> GeminiGenerateContentRequest:
+    policy = policy or FullReplyToolPolicy()
     wrapped = request.model_copy(deep=True)
     instruction = GeminiPart(
         text=(
-            "Return your complete final answer by calling aistudio_full_reply exactly once. "
+            f"When returning a final answer, call {policy.envelope_name} exactly once. "
             "Put the entire user-facing answer in its content string, preserving all paragraphs, "
             "formatting and dialogue. Do not summarize or leave any answer outside the function. "
             "The function is an output envelope and does not execute any action. "
+            "If a permitted client tool is needed, call exactly one client function instead; "
+            "the client will execute it and provide the result in a later request. "
+            "Do not mix a client call and the final-answer envelope in the same reply. "
             "Do not include private reasoning in content. Follow the existing instructions."
         )
     )
@@ -113,11 +203,26 @@ def wrap_request(request: GeminiGenerateContentRequest) -> GeminiGenerateContent
         wrapped.systemInstruction = GeminiContent(parts=[instruction])
     else:
         wrapped.systemInstruction.parts.append(instruction)
+    client_tools = [
+        GeminiTool(functionDeclarations=tool.functionDeclarations)
+        for tool in wrapped.tools or []
+        if tool.functionDeclarations
+    ]
+    actual_names = tuple(
+        declaration.get("name")
+        for tool in client_tools
+        for declaration in tool.functionDeclarations or []
+    )
+    if actual_names != policy.client_names:
+        raise _invalid_selection(
+            "Full-reply client declarations do not match the request policy"
+        )
     wrapped.tools = [
+        *client_tools,
         GeminiTool(
             functionDeclarations=[
                 {
-                    "name": TOOL_NAME,
+                    "name": policy.envelope_name,
                     "description": "Return the complete final answer as prose.",
                     "parameters": {
                         "type": "OBJECT",
@@ -126,10 +231,13 @@ def wrap_request(request: GeminiGenerateContentRequest) -> GeminiGenerateContent
                     },
                 }
             ]
-        )
+        ),
     ]
+    allowed_names = list(policy.allowed_client_names)
+    if policy.allow_final:
+        allowed_names.append(policy.envelope_name)
     wrapped.toolConfig = {
-        "functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [TOOL_NAME]}
+        "functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": allowed_names}
     }
     return wrapped
 
@@ -144,7 +252,10 @@ def _invalid_reply(message: str) -> HTTPException:
     )
 
 
-def unwrap_response(payload: dict[str, object]) -> dict[str, object]:
+def unwrap_response(
+    payload: dict[str, object], policy: FullReplyToolPolicy | None = None
+) -> dict[str, object]:
+    policy = policy or FullReplyToolPolicy()
     candidates = payload.get("candidates")
     if (
         not isinstance(candidates, list)
@@ -192,8 +303,33 @@ def unwrap_response(payload: dict[str, object]) -> dict[str, object]:
                 raise _invalid_reply("invalid function call")
             calls.append(call)
     if calls:
-        if len(calls) != 1 or calls[0].get("name") != TOOL_NAME:
-            raise _invalid_reply("expected exactly one aistudio_full_reply call")
+        if len(calls) != 1:
+            raise _invalid_reply("expected exactly one function call")
+        if calls[0].get("name") != policy.envelope_name:
+            if calls[0].get("name") not in policy.allowed_client_names:
+                raise _invalid_reply("client function was not permitted by tool_choice")
+            call_id = calls[0].get("id")
+            if call_id is not None and (not isinstance(call_id, str) or not call_id):
+                raise _invalid_reply("client function id must be a nonempty string")
+            for part in visible_parts:
+                if "functionCall" in part:
+                    signature = part.get("thoughtSignature")
+                    if signature is not None and not isinstance(signature, str):
+                        raise _invalid_reply(
+                            "client function signature must be a string"
+                        )
+            args = calls[0].get("args")
+            if not isinstance(args, dict):
+                raise _invalid_reply("client arguments must be a complete object")
+            try:
+                json.dumps(args, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise _invalid_reply(
+                    "client arguments must contain valid JSON"
+                ) from exc
+            return {**payload, "aistudio_full_reply": {"mode": "client_tool_call"}}
+        if not policy.allow_final:
+            raise _invalid_reply("tool_choice requires a client function call")
         args = calls[0].get("args")
         function_content = args.get("content") if isinstance(args, dict) else None
         if not isinstance(function_content, str):
@@ -203,13 +339,16 @@ def unwrap_response(payload: dict[str, object]) -> dict[str, object]:
         fragments: list[str] = []
         for part in visible_parts:
             text = part.get("text")
-            if isinstance(text, str) and text.strip() not in ("", _ENVELOPE_PREFACE):
+            preface = f"调用函数 `{policy.envelope_name}` 输出如下内容。"
+            if isinstance(text, str) and text.strip() not in ("", preface):
                 fragments.append(text)
             if "functionCall" in part:
                 fragments.append(function_content)
         answer = "".join(fragments)
         mode = "function_envelope"
     else:
+        if not policy.allow_final:
+            raise _invalid_reply("tool_choice requires a client function call")
         plain_fragments: list[str] = []
         for part in visible_parts:
             text = part.get("text")
@@ -233,6 +372,7 @@ def unwrap_response(payload: dict[str, object]) -> dict[str, object]:
 
 async def unwrap_stream(
     chunks: AsyncIterable[object],
+    policy: FullReplyToolPolicy | None = None,
 ) -> AsyncGenerator[str, None]:
     """Validate the complete envelope before emitting prose or a success finish."""
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -286,4 +426,8 @@ async def unwrap_stream(
         raise _invalid_reply("incomplete SSE event")
     candidate["content"] = {"parts": parts}
     merged["candidates"] = [candidate]
-    yield "data: " + json.dumps(unwrap_response(merged), ensure_ascii=False) + "\n\n"
+    yield (
+        "data: "
+        + json.dumps(unwrap_response(merged, policy), ensure_ascii=False)
+        + "\n\n"
+    )

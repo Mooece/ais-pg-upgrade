@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release_id": "20261123-full-reply-0bed7a87",
+  "release_id": "20261123-full-reply-tools-8c371879",
   "upstream": {
     "url": "https://github.com/DeconstructedCube/aistudio-api",
     "commit": "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
@@ -56,10 +56,11 @@
       "path": "src/aistudio_api/api/routes_openai.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "ccbdc6c9d3be8100bb239390f7baafb578500f900e025a558037b9d3e9bdde73",
+      "payload_sha256": "df28323fce90f0c8b5b6dc890e5423ac37dfb22f881e171288ff5f8ac6b06f60",
       "accepted_sha256": [
         "42f6da69ad47b34a0ef2b11a91dff9b79c35429947249e636a19d7c29e64bc38",
-        "946099f458a0dd4bfc315ba3821ac71cf62bf7e90cb5f9c339b89bbc93bcd7c6"
+        "946099f458a0dd4bfc315ba3821ac71cf62bf7e90cb5f9c339b89bbc93bcd7c6",
+        "ccbdc6c9d3be8100bb239390f7baafb578500f900e025a558037b9d3e9bdde73"
       ]
     },
     {
@@ -84,9 +85,10 @@
       "path": "src/aistudio_api/application/anti_truncation.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "e6c4463ad00dea32e69ff00de6dad732623a26a0f3e1dc7adb0d4ec9095ce431",
+      "payload_sha256": "211be9fe56a9a706f77a5224a2c5277f5593c16c0c931bfdd686542e53f3ddac",
       "accepted_sha256": [
-        "15dcb12b322c1e68ddb6e10642b33e93aebc25c349e84ce34b09c108831864e1"
+        "15dcb12b322c1e68ddb6e10642b33e93aebc25c349e84ce34b09c108831864e1",
+        "e6c4463ad00dea32e69ff00de6dad732623a26a0f3e1dc7adb0d4ec9095ce431"
       ]
     },
     {
@@ -300,11 +302,24 @@
       "path": "tests/unit/test_anti_truncation.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "a5fcb76bbd7a27adaf278cb612dadf585aa5a2e961bac41ed564adbef64a5f2f",
+      "payload_sha256": "370108c9f4927631485d6e6fa1b5be5fe1b4697b13aa7a5be7cd1250cb1f86c1",
       "accepted_sha256": [
+        "a5fcb76bbd7a27adaf278cb612dadf585aa5a2e961bac41ed564adbef64a5f2f",
         "d6da994aa42af3d001490ca68cbe26fc2c24ff87009f5a8fe739709f40b52018",
         "e172b6ac178fbe523ddd916db811bd0c022be071e6a153e7c3eca3981b01afdd"
       ]
+    },
+    {
+      "path": "tests/unit/test_full_reply_tool_wire.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "f296e17b50eb1f960510a534c63030e0ae1ec55492ba85f15271f231c87dc400"
+    },
+    {
+      "path": "tests/unit/test_full_reply_tools.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "d0d82438fc59db262c19b216e7cad38b484346c10f4d1901e90cc528b83e901a"
     },
     {
       "path": "tests/unit/test_model_defaults.py",
