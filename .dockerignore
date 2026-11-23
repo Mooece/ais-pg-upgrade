@@ -1,0 +1,8 @@
+**
+!upgrade.py
+!patch-manifest.json
+!docker/
+!docker/Dockerfile
+!docker/apply_patch.py
+!payload/
+!payload/**

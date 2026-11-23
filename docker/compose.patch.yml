@@ -1,0 +1,4 @@
+# Add this file AFTER the original compose file, keeping its project name/volumes.
+services:
+  aistudio-api:
+    image: ${AISTUDIO_PATCH_IMAGE:?Build and select the patched image first}

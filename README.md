@@ -4,7 +4,7 @@
 
 **致谢：感谢 DeconstructedCube 及原项目贡献者提供 aistudio-api，感谢其引用的 WAA、协议与前端开源项目。本仓库在原项目基础上提供定制升级补丁，修改文件中保留了原项目实现。**
 
-**强制前置要求：先按[原项目安装说明](https://github.com/DeconstructedCube/aistudio-api#快速开始)完成原项目安装，再使用本补丁。** 原项目目录必须已有代码、可用的 `.venv` Python 环境及完成构建的本机 WAA IPC 签名器。补丁工具会检查这些条件；未安装完成时会拒绝应用，不会代装原项目。
+**强制前置要求：先按[原项目安装说明](https://github.com/DeconstructedCube/aistudio-api#快速开始)完成原项目安装，再使用本补丁。** 源码安装的原项目目录必须已有代码、可用的 `.venv` Python 环境及完成构建的本机 WAA IPC 签名器。Docker 安装使用已有的兼容原项目镜像，通过[Docker 补丁镜像流程](docker/README.zh-CN.md)构建并替换容器。补丁工具会检查安装条件；未安装完成时会拒绝应用，不会代装原项目。
 
 当前补丁基线为原项目提交 **`a28a6c5b0790c4efa4495de8393631bf1ae814b1`**。新装时可在原项目 clone 中选择该版本，再按原项目流程安装。其他版本或未知定制文件需要先确认兼容，工具会在修改代码前检查文件内容并拒绝冲突。
 
@@ -19,6 +19,7 @@
 | `upgrade.py` | 安装前检查、备份、应用与回滚；使用 Python 标准库 |
 | `upgrade.sh` / `Upgrade-Windows.ps1` / `Upgrade-Windows.cmd` | 本地升级入口；Windows 入口先检查端口占用 |
 | `scripts/` / `tests/` | 补丁维护工具与安装器测试 |
+| `docker/` | 已安装原项目镜像的补丁构建、校验及 Compose 覆盖入口 |
 
 定制功能包括 OpenAI 兼容接口、回复缓存与缓存控制面板、调用统计、下游心跳、Google 上游 HTTP/2 PING，以及酒馆的 `模型名[防截断]` 选项。上游 PING 默认 240 秒，不会延长 Google 固定请求期限。防截断优先使用内部工具承载全文，不保证突破模型输出上限，也不自动续写。
 
