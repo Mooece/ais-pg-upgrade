@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -548,7 +549,9 @@ async def test_tool_stream_buffers_until_complete_arguments_and_finish(
     response = await routes.create_chat_completion(
         request, MagicMock(spec=AIStudioClient), None
     )
+    assert isinstance(response, StreamingResponse)
     iterator = response.body_iterator
+    assert isinstance(iterator, AsyncGenerator)
     pending = asyncio.create_task(anext(iterator))
     try:
         await started.wait()

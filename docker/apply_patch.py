@@ -153,7 +153,7 @@ def preflight(project: Path, package: Path = ROOT) -> tuple[dict, list[dict]]:
         if (action == "write" and current == wanted) or (action == "delete" and current is None):
             continue
         if current != base and (current is None or current not in accepted):
-            raise u.UpgradeError(f"Unknown target changes: {relative}")
+            raise u.unknown_target(relative, current, base)
         payload = None
         if action == "write":
             payload = u.plain_path(package / "payload" / relative).read_bytes()

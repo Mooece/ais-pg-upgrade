@@ -292,6 +292,7 @@ def unwrap_response(
             for field in (
                 "inlineData",
                 "fileData",
+                "videoMetadata",
                 "functionResponse",
                 "executableCode",
                 "codeExecutionResult",

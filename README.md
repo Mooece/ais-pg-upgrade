@@ -6,7 +6,11 @@
 
 **强制前置要求：先按[原项目安装说明](https://github.com/DeconstructedCube/aistudio-api#快速开始)完成原项目安装，再使用本补丁。** 源码安装的原项目目录必须已有代码、可用的 `.venv` Python 环境及完成构建的本机 WAA IPC 签名器。Docker 安装使用已有的兼容原项目镜像，通过[Docker 补丁镜像流程](docker/README.zh-CN.md)构建并替换容器。补丁工具会检查安装条件；未安装完成时会拒绝应用，不会代装原项目。
 
-当前补丁基线为原项目提交 **`a28a6c5b0790c4efa4495de8393631bf1ae814b1`**。新装时可在原项目 clone 中选择该版本，再按原项目流程安装。其他版本或未知定制文件需要先确认兼容，工具会在修改代码前检查文件内容并拒绝冲突。
+当前补丁基线为原项目提交 **`c770aaf3c76a10dbcd6584d033bb76ffa80ccd27`**。新装时可在原项目 clone 中选择该版本，再按原项目流程安装。已安装该版本且尚未打补丁时可直接检查、应用本补丁。其他版本或未知定制文件需要先确认兼容，工具会在修改代码前检查文件内容并拒绝冲突。
+
+本版保留新版上游的有序响应片段、工具签名、媒体响应、结束校验和账户轮换修复，并适配 OpenAI 接口及完整回复功能。字面文本中的 `<thought>` 标签按新版上游行为原样返回。旧版补丁基于 `a28a6c5`，不能直接叠加本版；须先备份配置和业务数据、用旧版补丁及对应备份逐次回滚旧补丁，再按原项目流程更新并安装上述新基线。没有可用旧备份时，保留原目录，另建该基线的原项目安装后再迁移配置与数据。
+
+**原项目工作区干净不代表版本兼容。** 遇到 `Unknown target changes` 时，先按[版本不匹配排查](#版本不匹配unknown-target-changes)处理，不要只追加文件哈希或关闭校验。
 
 ## 内容与目录
 
@@ -82,6 +86,37 @@ if ($LASTEXITCODE -ne 0) { throw '升级或启动失败，请查看上方错误�
 
 升级顺序为：**完整停止旧实例 → 应用补丁 → 启动一个新实例 → 打开页面**。运行中的 Python 进程不会因磁盘代码更新而自动重新加载。如果启动时出现 `WinError 10048` 或 8080 端口被占用，先核对原来的服务窗口，避免同时启动两个实例；不要批量结束其他 Python 程序。
 
+### 版本不匹配：Unknown target changes
+
+`git status` 干净、`git diff HEAD` 无输出，只说明文件与**当前提交**一致；补丁按固定基线及已知补丁文件内容校验，不把任意上游提交都视为兼容版本。补丁仓库的 `Already up to date` 也只表示补丁仓库已同步。
+
+本版已经适配 `c770aaf3c76a10dbcd6584d033bb76ffa80ccd27`，不需要为使用补丁而降级到 `a28a6c5`。原项目仍停留在旧版或后来更新到其他提交时，即使工作区干净也可能被拒绝。校验器统一 CRLF/LF 后比较文件内容；仅追加哈希会混用不同版本的接口，不能代替源码适配。
+
+**仅适用于首次应用被拒绝、原项目没有未提交改动的源码安装：** 完整停止原服务和自动重启入口，备份自己的配置与业务数据，再将原项目固定到受支持基线。下面的检查会在工作区不干净时停止；若已经应用过补丁或存在自定义代码，先处理对应备份与兼容性，不要强制切换。
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$project = 'D:\01Project\aistudio-api'
+$addon = 'D:\01Project\ais-pg-upgrade'
+$baseline = 'c770aaf3c76a10dbcd6584d033bb76ffa80ccd27'
+
+$changes = @(git -C $project status --porcelain)
+if ($LASTEXITCODE -ne 0) { throw '读取原项目状态失败' }
+if ($changes.Count -ne 0) { throw '原项目存在改动，请先备份并确认，不要强制切换版本' }
+
+git -C $project fetch origin $baseline
+if ($LASTEXITCODE -ne 0) { throw '获取受支持基线失败' }
+git -C $project switch --detach $baseline
+if ($LASTEXITCODE -ne 0) { throw '切换原项目基线失败' }
+
+git -C $addon pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw '补丁仓库拉取失败' }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$addon\Upgrade-Windows.ps1" -ProjectPath $project -Port 8080
+if ($LASTEXITCODE -ne 0) { throw '升级或启动失败，请查看上方错误信息' }
+```
+
+`detached HEAD` 是固定提交的正常状态。后续更新拉取**补丁仓库**，不要直接对已打补丁的原项目执行 `git pull`。不要用 `git reset --hard`、`git clean` 或修改允许哈希清单来跳过冲突。需要保留较新上游时，应等待对应适配版本；Docker 安装应选择兼容基线的原项目镜像，源码切换不会改变已有镜像。
+
 ### VPS / FinalShell / systemd
 
 先按原项目流程完成 VPS 安装。以下假定服务账号为 `aistudio`，原项目为 `/opt/aistudio-api`，服务为 `aistudio-api`。在 FinalShell 的服务器终端首次准备补丁目录与外部备份目录：
@@ -129,6 +164,6 @@ python upgrade.py rollback --backup '工具打印的备份目录'
 
 ## 补丁维护与验证
 
-维护者通过 `scripts/build_payload.py` 对固定上游树与已验证定制树生成差异。生成器仅输出升级范围内的变化文件，并保留上一版允许的内容校验；运行检查和测试时遵守工作区源码/测试/交付分离规则。
+维护者通过 `scripts/build_payload.py` 对固定上游树与已验证定制树生成差异。生成器仅输出升级范围内的变化文件，并保留同一上游基线内上一版允许的内容校验；跨基线适配须重新建立校验历史，不继承旧基线哈希。运行检查和测试时遵守工作区源码/测试/交付分离规则。
 
-本次防截断工具兼容改动通过 280 项隔离回归测试，在本机原项目安装目录通过 298 项相关测试；安装器通过 42 项测试，另有 1 项因 Windows 符号链接权限跳过。旧补丁更新、重复应用、回滚、写入失败恢复及数据保留均已验证。真实 VPS、Android、Google 链路与具体酒馆预设仍需在各自环境验收。
+2026-11-26 的 `c770aaf3` 适配在 Linux 通过上游原版 438 项、补丁版 829 项全量测试，均无跳过；生成补丁安装到隔离的原项目后，在 Windows 也通过全部 829 项测试。安装器通过 150 项测试，另有 1 项因 Windows 符号链接权限跳过。真实安装探针、完整载荷校验、重复应用、逐字节回滚、配置与数据保留，以及旧基线拒绝均已验证。Docker Linux 引擎本次未运行，尚未重新验证新版镜像构建及容器内 WAA IPC；真实 VPS、Android、Google 链路与具体酒馆预设仍需在各自环境验收。

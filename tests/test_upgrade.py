@@ -197,6 +197,39 @@ def test_all_conflicts_preflight_before_any_write(installation):
     assert not root.exists()
 
 
+@pytest.mark.parametrize("after", [b"upgraded\n", None])
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"])
+def test_unknown_upstream_content_reports_supported_baseline(installation, after, newline):
+    project, package, root = installation
+    entry = patch(project, package, "src/aistudio_api/api/schemas.py", after=after)
+    manifest(package, [entry])
+    current = b"new upstream content" + newline
+    target = project / entry["path"]
+    target.write_bytes(current)
+
+    with pytest.raises(u.UpgradeError, match="Unknown target changes") as error:
+        u.apply(project, str(root), package)
+
+    message = str(error.value)
+    assert f"Supported upstream baseline: {u.BASE}" in message
+    assert f"Target SHA256 (LF-normalized): {u.digest(current)}" in message
+    assert f"Expected base SHA256 (LF-normalized): {entry['base_sha256']}" in message
+    assert "different upstream version or local edits" in message
+    assert "README.md" in message
+    assert target.read_bytes() == current
+    assert not root.exists()
+
+
+def test_missing_target_reports_missing_instead_of_checksum(installation):
+    project, package, root = installation
+    entry = patch(project, package, "src/aistudio_api/api/schemas.py")
+    manifest(package, [entry])
+    (project / entry["path"]).unlink()
+    with pytest.raises(u.UpgradeError, match=r"Target SHA256 \(LF-normalized\): missing"):
+        u.apply(project, str(root), package)
+    assert not root.exists()
+
+
 def test_corrupt_payload_refused(installation):
     project, package, root = installation
     entry = patch(project, package)

@@ -89,6 +89,15 @@ def _client_tool_request(
     )
 
 
+def _function_names(request: GeminiGenerateContentRequest) -> list[object]:
+    assert request.tools is not None
+    names: list[object] = []
+    for tool in request.tools:
+        assert tool.functionDeclarations is not None
+        names.extend(declaration["name"] for declaration in tool.functionDeclarations)
+    return names
+
+
 @pytest.mark.parametrize(
     "choice,allowed,allow_final",
     [
@@ -110,17 +119,18 @@ def test_full_reply_tool_policy_preserves_choice_semantics(
     validate_selection(request)
     policy = tool_policy(request)
     assert policy == FullReplyToolPolicy(("lookup", "calculate"), allowed, allow_final)
+    assert request.tools is not None
     gemini = GeminiGenerateContentRequest(
         contents=[],
         tools=[
-            GeminiTool(functionDeclarations=[tool["function"]])
+            GeminiTool(functionDeclarations=[cast(dict[str, object], tool["function"])])
             for tool in request.tools
         ],
     )
     original = gemini.model_dump()
     wrapped = wrap_request(gemini, policy)
     assert gemini.model_dump() == original
-    assert [d["name"] for tool in wrapped.tools for d in tool.functionDeclarations] == [
+    assert _function_names(wrapped) == [
         "lookup",
         "calculate",
         "aistudio_full_reply",
@@ -142,9 +152,12 @@ def test_full_reply_policy_without_client_tools_allows_only_envelope(choice):
     policy = tool_policy(request)
     assert policy == FullReplyToolPolicy()
     wrapped = wrap_request(GeminiGenerateContentRequest(contents=[]), policy)
-    assert wrapped.toolConfig["functionCallingConfig"]["allowedFunctionNames"] == [
-        "aistudio_full_reply"
-    ]
+    assert wrapped.toolConfig == {
+        "functionCallingConfig": {
+            "mode": "ANY",
+            "allowedFunctionNames": ["aistudio_full_reply"],
+        }
+    }
 
 
 @pytest.mark.parametrize(
@@ -212,23 +225,24 @@ def test_full_reply_envelope_name_avoids_client_declarations_and_history():
     )
     policy = tool_policy(request)
     assert policy.envelope_name == "aistudio_full_reply_4"
+    assert request.tools is not None
     gemini = GeminiGenerateContentRequest(
         contents=[],
         tools=[
-            GeminiTool(functionDeclarations=[tool["function"]])
+            GeminiTool(functionDeclarations=[cast(dict[str, object], tool["function"])])
             for tool in request.tools
         ],
     )
     wrapped = wrap_request(gemini, policy)
-    assert [d["name"] for tool in wrapped.tools for d in tool.functionDeclarations] == [
+    assert _function_names(wrapped) == [
         "aistudio_full_reply",
         "aistudio_full_reply_1",
         "aistudio_full_reply_4",
     ]
-    assert (
-        "call aistudio_full_reply_4 exactly once"
-        in wrapped.systemInstruction.parts[-1].text
-    )
+    assert wrapped.systemInstruction is not None
+    instruction = wrapped.systemInstruction.parts[-1].text
+    assert isinstance(instruction, str)
+    assert "call aistudio_full_reply_4 exactly once" in instruction
     external = full_reply(name="aistudio_full_reply", args={"synthetic": True})
     assert unwrap_response(external, policy)["aistudio_full_reply"] == {
         "mode": "client_tool_call"
@@ -241,9 +255,9 @@ def test_full_reply_envelope_name_avoids_client_declarations_and_history():
     )
     result = unwrap_response(final, policy)
     assert result["aistudio_full_reply"] == {"mode": "function_envelope"}
-    assert result["candidates"][0]["content"]["parts"] == [
-        {"text": "complete synthetic answer"}
-    ]
+    candidates = result["candidates"]
+    assert isinstance(candidates, list)
+    assert candidates[0]["content"]["parts"] == [{"text": "complete synthetic answer"}]
 
 
 @pytest.mark.parametrize(
@@ -261,7 +275,9 @@ def test_full_reply_unwrap_keeps_complete_allowed_client_call_and_signature(choi
     result = unwrap_response(payload, tool_policy(_client_tool_request(choice)))
     assert result["aistudio_full_reply"] == {"mode": "client_tool_call"}
     assert result["candidates"] == payload["candidates"]
-    assert result["candidates"][0]["content"]["parts"][1] == call_part
+    candidates = result["candidates"]
+    assert isinstance(candidates, list)
+    assert candidates[0]["content"]["parts"][1] == call_part
 
 
 @pytest.mark.parametrize(
@@ -1085,7 +1101,7 @@ async def test_real_gateway_preserves_completion_evidence_for_alias(
                 "stream": True,
             },
         )
-    if not selected_alias:
+    if not selected_alias and failure != "truncated_argument":
         assert '"tool_calls"' in response.text
         assert '"finish_reason":"tool_calls"' in response.text
     elif failure == "none":
@@ -1103,6 +1119,7 @@ async def test_real_gateway_preserves_completion_evidence_for_alias(
         )
         assert '"content":"wire complete"' not in response.text
         assert '"finish_reason":"stop"' not in response.text
+        assert '"finish_reason":"tool_calls"' not in response.text
 
 
 @pytest.mark.asyncio

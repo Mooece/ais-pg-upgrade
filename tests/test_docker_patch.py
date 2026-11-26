@@ -163,6 +163,21 @@ def test_previous_patched_image_hash_and_receipt_are_restored(image):
     assert receipt.read_bytes() == original_receipt
 
 
+def test_unknown_image_content_reports_supported_baseline(image):
+    project, package, backups, receipt = image
+    change = entry(project, package, "src/aistudio_api/api/schemas.py")
+    manifest(package, [change])
+    target = project / change["path"]
+    current = b"new upstream content\r\n"
+    target.write_bytes(current)
+    with pytest.raises(u.UpgradeError, match="Unknown target changes") as error:
+        d.apply(project, str(backups), package, receipt)
+    assert f"Supported upstream baseline: {u.BASE}" in str(error.value)
+    assert f"Target SHA256 (LF-normalized): {u.digest(current)}" in str(error.value)
+    assert target.read_bytes() == current
+    assert not backups.exists() and not receipt.exists()
+
+
 def test_uses_real_global_interpreter_and_signer_without_fake_source_install(image, monkeypatch):
     project, package, _, _ = image
     manifest(package, [entry(project, package)])

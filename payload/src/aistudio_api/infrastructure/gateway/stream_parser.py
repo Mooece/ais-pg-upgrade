@@ -273,7 +273,8 @@ class IncrementalJSONStreamParser:
         if (isinstance(container, list) and container) or has_feedback:
             candidate = parse_response_chunk(repaired)
             if (
-                candidate.text
+                candidate.parts
+                or candidate.text
                 or candidate.thinking
                 or candidate.reasoning_images
                 or candidate.images

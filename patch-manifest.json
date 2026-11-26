@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "release_id": "20261123-full-reply-tools-8c371879",
+  "release_id": "20261126-c770-compat",
   "upstream": {
     "url": "https://github.com/DeconstructedCube/aistudio-api",
-    "commit": "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
+    "commit": "c770aaf3c76a10dbcd6584d033bb76ffa80ccd27"
   },
   "entries": [
     {
@@ -40,11 +40,7 @@
       "path": "src/aistudio_api/api/reply_cache_response.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "31c0642a539c7f14264578ad5fce3642864469602398b207a4c6d4a74528326f",
-      "accepted_sha256": [
-        "383f6fd9f35a6ffc9309fe83d2ffa81dc8976572950a1512af987f6eee66db34",
-        "62967fe367ed2226e49586ac0331541cc5a99c52b856998f8852503486283547"
-      ]
+      "payload_sha256": "31c0642a539c7f14264578ad5fce3642864469602398b207a4c6d4a74528326f"
     },
     {
       "path": "src/aistudio_api/api/reply_cache_tasks.py",
@@ -56,12 +52,7 @@
       "path": "src/aistudio_api/api/routes_openai.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "df28323fce90f0c8b5b6dc890e5423ac37dfb22f881e171288ff5f8ac6b06f60",
-      "accepted_sha256": [
-        "42f6da69ad47b34a0ef2b11a91dff9b79c35429947249e636a19d7c29e64bc38",
-        "946099f458a0dd4bfc315ba3821ac71cf62bf7e90cb5f9c339b89bbc93bcd7c6",
-        "ccbdc6c9d3be8100bb239390f7baafb578500f900e025a558037b9d3e9bdde73"
-      ]
+      "payload_sha256": "b52a171025454d8476324e55cc5e5a6ca9f20abf2cfd84e64c348f69c1363962"
     },
     {
       "path": "src/aistudio_api/api/routes_system.py",
@@ -72,8 +63,8 @@
     {
       "path": "src/aistudio_api/api/schemas.py",
       "action": "write",
-      "base_sha256": "e718fd2889d5d516c3a006ffde217cfc311316e2643a16216d2ce6d69cdcd866",
-      "payload_sha256": "8a357700cf1f72ab1ad02d76292a249e87d5b6fee4958d38c2e54a69d3aae1bf"
+      "base_sha256": "c4422e56ff3e244cef0c0c0aff5965f17f76004ea934035f9f5789977a2a01ec",
+      "payload_sha256": "78e4be21fd4df65f3db7ece88bf888f8a743b0a1b418ebbce5dbd705a1c59111"
     },
     {
       "path": "src/aistudio_api/api/state.py",
@@ -85,50 +76,43 @@
       "path": "src/aistudio_api/application/anti_truncation.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "211be9fe56a9a706f77a5224a2c5277f5593c16c0c931bfdd686542e53f3ddac",
-      "accepted_sha256": [
-        "15dcb12b322c1e68ddb6e10642b33e93aebc25c349e84ce34b09c108831864e1",
-        "e6c4463ad00dea32e69ff00de6dad732623a26a0f3e1dc7adb0d4ec9095ce431"
-      ]
+      "payload_sha256": "77d602272956097394ba47141ef0c038c729447ef595470237ec36ae2205654c"
     },
     {
       "path": "src/aistudio_api/application/api_service_gemini.py",
       "action": "write",
-      "base_sha256": "5800ec44320f3d32311f0064bd8bc771898aafe12d0691c1d14e39596ff8de0a",
-      "payload_sha256": "3a131fe22d3261455bd5060072a8cc8f0be034039284540eef04b4fc43d65efa"
+      "base_sha256": "1d1793420ba2da7eaad5aef06d01e945ac2e9f43a7e89145219bf2951122c1c2",
+      "payload_sha256": "d9e37cc6df7f930f2e82ec6cf7bcd53956194f676caffa9be63bc5966a5195a8"
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/client.py",
       "action": "write",
-      "base_sha256": "c3d971ff8800f71238986ea716b25a3a454b4277ddb363472bff5c34f742e55f",
-      "payload_sha256": "9310db29ae73e7c3ca8c32af35aab93953adfb5c59ef2838c0913eac5df5174f"
+      "base_sha256": "991317d9953fdbc79894402af3fe6301237735c38cc40a68f53aa31851d39dca",
+      "payload_sha256": "d6d2e672e92f30b0e4269204ad6c95a391ef63af4e9824c5a0dfb02ca8ea001b"
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/stream_parser.py",
       "action": "write",
       "base_sha256": "675c00d788c5a749d6899da7a8772ed22f7318d90a32ff8619a26fdcb1a117b5",
-      "payload_sha256": "2bdec2110c95ca431a9e7640d68eb9e0de30a64da548c8c3a43197fbefa1af23"
+      "payload_sha256": "ba5949b24d740e00068d915bef8a9f093bea50d9797288924247bacbaccb54b1"
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/streaming.py",
       "action": "write",
-      "base_sha256": "0510667cae64ecf583b94509eb0452abacb8488cedaa73594ea164a01d78329a",
-      "payload_sha256": "1b1d8bf5b2d4e402cf9a79478e1d880083d72e56e93b9f6bcf967e6ec5d24ef3"
+      "base_sha256": "ea4b3a55f5bc14e21ad3b7228b5a6412dbd4db003a67e2f80a621507a11dbc97",
+      "payload_sha256": "d63b0cc85266571cd791bdcf6fa74a0ceecdd555d895e9a212d2dea653ba2550"
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/transport.py",
       "action": "write",
       "base_sha256": "820978eb84eb0bd44026a7d9ea74e7a3c501b0f4864985203cc66fcf30718fe0",
-      "payload_sha256": "76d1419ff46adafb71afe1bacd2060fab6a713fa4cf7808537b8ddfc1d05e141",
-      "accepted_sha256": [
-        "11315baa95762748fcc44ecfbbaa1282c2c7784e6885753fc2cbf1e0b76dc73f"
-      ]
+      "payload_sha256": "76d1419ff46adafb71afe1bacd2060fab6a713fa4cf7808537b8ddfc1d05e141"
     },
     {
       "path": "src/aistudio_api/infrastructure/gateway/wire_types.py",
       "action": "write",
-      "base_sha256": "05a1110fba06965d59194cde16eb4762b638dc694a5c4db0f383db2775c68707",
-      "payload_sha256": "0a42d754ba8596c307fc8841d3613032ebb65b42e530ed10bfa4a3ffc3015bbe"
+      "base_sha256": "0430f51a33a98c673154dc8e7a01971d8386a73d2eaa91669f82a169d4398861",
+      "payload_sha256": "6a6ef9503c05e4db0d4e6daf6f1ce96901b512f8c20232fd642fc9d31a1de25a"
     },
     {
       "path": "src/aistudio_api/infrastructure/utils/request_diagnostics.py",
@@ -302,36 +286,49 @@
       "path": "tests/unit/test_anti_truncation.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "370108c9f4927631485d6e6fa1b5be5fe1b4697b13aa7a5be7cd1250cb1f86c1",
-      "accepted_sha256": [
-        "a5fcb76bbd7a27adaf278cb612dadf585aa5a2e961bac41ed564adbef64a5f2f",
-        "d6da994aa42af3d001490ca68cbe26fc2c24ff87009f5a8fe739709f40b52018",
-        "e172b6ac178fbe523ddd916db811bd0c022be071e6a153e7c3eca3981b01afdd"
-      ]
+      "payload_sha256": "d257d87317aa9af0ab1ec9d90fcff4414963d83043611374012818184c3bdaeb"
     },
     {
       "path": "tests/unit/test_full_reply_tool_wire.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "f296e17b50eb1f960510a534c63030e0ae1ec55492ba85f15271f231c87dc400"
+      "payload_sha256": "309fe669da96648d0e3c3e017bb0b9faa4333f570f62e24126b46f1ab0618496"
     },
     {
       "path": "tests/unit/test_full_reply_tools.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "d0d82438fc59db262c19b216e7cad38b484346c10f4d1901e90cc528b83e901a"
+      "payload_sha256": "40415a26399052a948d8b31b37b9f4ab6d3f8eefb3589a835a689f7ba9f25d36"
     },
     {
       "path": "tests/unit/test_model_defaults.py",
       "action": "write",
-      "base_sha256": "157abc093ceec6044edda409f9ca015b2d0829a0383e813f9cb535b90d8215f4",
-      "payload_sha256": "ee820811497e6084ad61aec637449decd8ed3ed75be15a49d8b77052e8b80177"
+      "base_sha256": "21121a104e61ca0ae4d04c9ce314cc3d2a8bf9216bef803c35204cfc7ddb0179",
+      "payload_sha256": "fe6782e1626a02bf1a1a1fc02cf286e19333747b21acd84d73dfb581dc91d074"
     },
     {
       "path": "tests/unit/test_openai_keepalive.py",
       "action": "write",
       "base_sha256": null,
       "payload_sha256": "44c2cf3a772cc0f66a8e529ecb03da9bd4aa6479a9dc6bd970656497a9568f0e"
+    },
+    {
+      "path": "tests/unit/test_patch_gateway_compat.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "7d56239221b20a81e2175bbd0de8c7ae72f6cada742887f8862ea461ba924114"
+    },
+    {
+      "path": "tests/unit/test_patch_gemini_compat.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "5f39bbc34097f35e3af74274915baff656b7df5fda238a5133e803694cc46f91"
+    },
+    {
+      "path": "tests/unit/test_patch_openai_compat.py",
+      "action": "write",
+      "base_sha256": null,
+      "payload_sha256": "d7268c3b4a967ccaa41d5738a30fbfced861fee60150440b6a3c24d9268ecd99"
     },
     {
       "path": "tests/unit/test_reply_cache.py",
@@ -397,10 +394,7 @@
       "path": "tests/unit/test_upstream_h2_keepalive.py",
       "action": "write",
       "base_sha256": null,
-      "payload_sha256": "811ac331a967c1415b28f2dde2e81cb6c84f5371f1e72bb10f84c125ef2c0285",
-      "accepted_sha256": [
-        "13effc66f1b5fe981b7bf1057985cbab613b126127f41a390ee7322b1f000ebb"
-      ]
+      "payload_sha256": "811ac331a967c1415b28f2dde2e81cb6c84f5371f1e72bb10f84c125ef2c0285"
     },
     {
       "path": "tests/unit/test_waa_engine.py",
@@ -411,8 +405,8 @@
     {
       "path": "tests/unit/test_wire_codec.py",
       "action": "write",
-      "base_sha256": "2fc01a07518f3931640a05c312de3a5743f5b0f44cda9c735d9c89e539440b90",
-      "payload_sha256": "21075fe565257636165b839a367bc139b489f24ac19f7c7ab8633a40a263574e"
+      "base_sha256": "653b979092b31017dce084ce75395b07efaa16d8b5f926add68e3ced1e9303e9",
+      "payload_sha256": "6ae73bbf2eccbbbdad8fd103babb0184ebf7f65bfc94becaf985622e809397e6"
     },
     {
       "path": "web/package.json",

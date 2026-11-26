@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent
 UPSTREAM = "https://github.com/DeconstructedCube/aistudio-api"
-BASE = "a28a6c5b0790c4efa4495de8393631bf1ae814b1"
+BASE = "c770aaf3c76a10dbcd6584d033bb76ffa80ccd27"
 MARKERS = (
     "main.py",
     "pyproject.toml",
@@ -142,6 +142,18 @@ def installed(project: Path) -> None:
         raise UpgradeError(f"Original installation probe failed: {exc}") from exc
 
 
+def unknown_target(relative: str, current: str | None, base: str | None) -> UpgradeError:
+    return UpgradeError(
+        f"Unknown target changes: {relative}\n"
+        f"Supported upstream baseline: {BASE}\n"
+        f"Target SHA256 (LF-normalized): {current or 'missing'}\n"
+        f"Expected base SHA256 (LF-normalized): {base or 'missing'}\n"
+        "A different upstream version or local edits can cause this refusal, even with a "
+        "clean Git working tree. See README.md (Unknown target changes) before retrying; "
+        "do not bypass checksum checks."
+    )
+
+
 def preflight(project: Path, package: Path = ROOT) -> tuple[dict, list[dict]]:
     project = plain_path(project)
     package = plain_path(package)
@@ -191,12 +203,12 @@ def preflight(project: Path, package: Path = ROOT) -> tuple[dict, list[dict]]:
             if current == wanted:
                 continue
             if current != base and (current is None or current not in accepted):
-                raise UpgradeError(f"Unknown target changes: {relative}")
+                raise unknown_target(relative, current, base)
         else:
             if current is None:
                 continue
             if current != base and current not in accepted:
-                raise UpgradeError(f"Unknown target changes: {relative}")
+                raise unknown_target(relative, current, base)
         changes.append(
             {
                 "path": relative,

@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 UPSTREAM_URL = "https://github.com/DeconstructedCube/aistudio-api"
-RELEASE_ID = "20261122-patch-only-443fa3f9"
+RELEASE_ID = "20261126-c770-compat"
 
 
 def git(repo: Path, *args: str) -> bytes:

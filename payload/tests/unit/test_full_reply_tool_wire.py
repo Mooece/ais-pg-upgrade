@@ -55,9 +55,11 @@ def test_serial_full_reply_declarations_and_choice_survive_native_encoding(
 
     # One wire declaration block contains both unchanged client functions and
     # the independently named private envelope; no native tool replaces them.
+    assert native.tools is not None
     assert len(native.tools) == 1
     assert native.tools[0][0] is None
     declarations = native.tools[0][1]
+    assert isinstance(declarations, list)
     envelope_name = (
         "aistudio_full_reply_1"
         if name == "aistudio_full_reply"
@@ -71,10 +73,12 @@ def test_serial_full_reply_declarations_and_choice_survive_native_encoding(
     for declaration in declarations[:2]:
         assert declaration[1] == "Synthetic client lookup"
         schema = declaration[2]
+        assert isinstance(schema, list)
         assert schema[0] == 6  # Native object schema.
         assert schema[SchemaIndex.PROPERTIES] == [["query", [1]]]
         assert schema[SchemaIndex.REQUIRED] == ["query"]
     envelope_schema = declarations[2][2]
+    assert isinstance(envelope_schema, list)
     assert envelope_schema[SchemaIndex.PROPERTIES] == [["content", [1]]]
     assert envelope_schema[SchemaIndex.REQUIRED] == ["content"]
 
@@ -126,10 +130,12 @@ def test_signed_client_result_roundtrip_reaches_native_wire_without_signature_ca
         model=MODEL,
         full_reply_policy=tool_policy(initial),
     )
-    message = completion["choices"][0]["message"]
+    choices = completion["choices"]
+    assert isinstance(choices, list)
+    message = choices[0]["message"]
     call = message["tool_calls"][0]
     assert call["id"] != "wire-call"
-    assert completion["choices"][0]["finish_reason"] == "tool_calls"
+    assert choices[0]["finish_reason"] == "tool_calls"
     followup = OpenAIChatCompletionRequest(
         model=MODEL,
         messages=[
@@ -172,7 +178,10 @@ def test_signed_client_result_roundtrip_reaches_native_wire_without_signature_ca
         if name == "aistudio_full_reply"
         else "aistudio_full_reply"
     )
-    assert native.tools[0][1][-1][0] == envelope_name
+    assert native.tools is not None
+    declarations = native.tools[0][1]
+    assert isinstance(declarations, list)
+    assert declarations[-1][0] == envelope_name
     assert native.tool_config == [
         None,
         [2, [*([name] if retain_tools else []), envelope_name]],

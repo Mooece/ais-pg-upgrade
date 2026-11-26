@@ -755,7 +755,11 @@ def gemini_response_to_openai(
                 }
             )
         inline_data = _as_dict(part.get("inlineData"))
-        if inline_data.get("mimeType") and inline_data.get("data"):
+        if (
+            (inline_data.get("mimeType") and inline_data.get("data"))
+            or _as_dict(part.get("fileData")).get("fileUri")
+            or part.get("videoMetadata") is not None
+        ):
             raise HTTPException(
                 status_code=501,
                 detail={
@@ -1011,7 +1015,11 @@ async def _openai_stream_events(
                             started_tool_calls.add(raw_call_id)
                         calls.append(call_delta)
                     inline_data = _as_dict(part.get("inlineData"))
-                    if inline_data.get("mimeType") and inline_data.get("data"):
+                    if (
+                        (inline_data.get("mimeType") and inline_data.get("data"))
+                        or _as_dict(part.get("fileData")).get("fileUri")
+                        or part.get("videoMetadata") is not None
+                    ):
                         yield _sse(
                             _openai_stream_error(
                                 "OpenAI Chat Completions does not support generated media; use the native Gemini API",
